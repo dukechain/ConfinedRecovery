@@ -48,6 +48,7 @@ import org.apache.flink.optimizer.plan.NamedChannel;
 import org.apache.flink.optimizer.plan.PlanNode;
 import org.apache.flink.optimizer.plan.SingleInputPlanNode;
 import org.apache.flink.optimizer.plan.PlanNode.FeedbackPropertiesMeetRequirementsReport;
+import org.apache.flink.optimizer.plan.SinkPlanNode;
 import org.apache.flink.runtime.operators.DriverStrategy;
 import org.apache.flink.util.Visitor;
 
@@ -69,6 +70,8 @@ public class BulkIterationNode extends SingleInputNode implements IterationNode 
 	private OptimizerNode singleRoot;
 	
 	private final int costWeight;
+	
+	private List<DataSinkNode> iterationSinks = new ArrayList<DataSinkNode>();
 
 	// --------------------------------------------------------------------------------------------
 	
@@ -150,24 +153,48 @@ public class BulkIterationNode extends SingleInputNode implements IterationNode 
 		this.nextPartialSolution = nextPartialSolution;
 		this.terminationCriterion = terminationCriterion;
 		
-		if (terminationCriterion == null) {
+		if (terminationCriterion == null && iterationSinks.size() == 0) {
 			this.singleRoot = nextPartialSolution;
 			this.rootConnection = new DagConnection(nextPartialSolution, ExecutionMode.PIPELINED);
 		}
 		else {
-			// we have a termination criterion
-			SingleRootJoiner singleRootJoiner = new SingleRootJoiner();
-			this.rootConnection = new DagConnection(nextPartialSolution, singleRootJoiner, ExecutionMode.PIPELINED);
-			this.terminationCriterionRootConnection = new DagConnection(terminationCriterion, singleRootJoiner,
-																		ExecutionMode.PIPELINED);
+			OptimizerNode sinkRoot = null;
+			if (iterationSinks.size() == 1) {
+				sinkRoot = iterationSinks.get(0);
+			}
+			else if (iterationSinks.size() > 1) {
+				Iterator<DataSinkNode> iter = iterationSinks.iterator();
+				sinkRoot = iter.next();
 
-			singleRootJoiner.setInputs(this.rootConnection, this.terminationCriterionRootConnection);
+				while (iter.hasNext()) {
+					sinkRoot = new SinkJoiner(sinkRoot, iter.next());
+				}
+			}
 			
-			this.singleRoot = singleRootJoiner;
-			
-			// add connection to terminationCriterion for interesting properties visitor
-			terminationCriterion.addOutgoingConnection(terminationCriterionRootConnection);
-		
+			OptimizerNode singleRoot = nextPartialSolution;
+			this.singleRoot = nextPartialSolution;
+			this.rootConnection = new DagConnection(nextPartialSolution, ExecutionMode.PIPELINED);
+			// we have a termination criterion
+			if(terminationCriterion != null ) {
+				
+				SingleRootJoiner singleRootJoiner = new SingleRootJoiner();
+				this.rootConnection = new DagConnection(nextPartialSolution, singleRootJoiner, ExecutionMode.PIPELINED);
+				this.terminationCriterionRootConnection = new DagConnection(terminationCriterion, singleRootJoiner,
+																			ExecutionMode.PIPELINED);
+
+				singleRootJoiner.setInputs(this.rootConnection, this.terminationCriterionRootConnection);
+				
+				// add connection to terminationCriterion for interesting properties visitor
+				terminationCriterion.addOutgoingConnection(terminationCriterionRootConnection);
+				
+				singleRoot = singleRootJoiner;
+			}
+			if(sinkRoot != null) {
+				this.singleRoot = new SinkJoiner(sinkRoot, singleRoot);
+			}
+			else {
+				this.singleRoot = singleRoot;
+			}
 		}
 		
 		nextPartialSolution.addOutgoingConnection(rootConnection);
@@ -179,6 +206,10 @@ public class BulkIterationNode extends SingleInputNode implements IterationNode 
 	
 	public OptimizerNode getSingleRootOfStepFunction() {
 		return this.singleRoot;
+	}
+	
+	public void addIterationSink(DataSinkNode sink) {
+		this.iterationSinks.add(sink);
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -218,6 +249,11 @@ public class BulkIterationNode extends SingleInputNode implements IterationNode 
 			// interesting properties
 			this.terminationCriterionRootConnection.setInterestingProperties(new InterestingProperties());
 			this.terminationCriterion.accept(new InterestingPropertyVisitor(estimator));
+		}
+		
+		// todo check this
+		for(DataSinkNode sink : this.iterationSinks) {
+			sink.accept(new InterestingPropertyVisitor(estimator));
 		}
 		
 		// we need to make 2 interesting property passes, because the root of the step function needs also
@@ -351,14 +387,30 @@ public class BulkIterationNode extends SingleInputNode implements IterationNode 
 		
 		// 5) Create a candidate for the Iteration Node for every remaining plan of the step function.
 		if (terminationCriterion == null) {
+			List<PlanNode> iterationSinkCandidates = this.iterationSinks.get(0).getAlternativePlans(estimator);
+			
 			for (PlanNode candidate : candidates) {
-				BulkIterationPlanNode node = new BulkIterationPlanNode(this, "BulkIteration ("+this.getOperator().getName()+")", in, pspn, candidate);
-				GlobalProperties gProps = candidate.getGlobalProperties().clone();
-				LocalProperties lProps = candidate.getLocalProperties().clone();
-				node.initProperties(gProps, lProps);
-				target.add(node);
+				for (PlanNode iterationSinkCandidate : iterationSinkCandidates) {
+					if (singleRoot.areBranchCompatible(candidate, iterationSinkCandidate)) {
+						BulkIterationPlanNode node = new BulkIterationPlanNode(this, "BulkIteration ("+this.getOperator().getName()+")", in, pspn, candidate, (SinkPlanNode) iterationSinkCandidate);
+						GlobalProperties gProps = candidate.getGlobalProperties().clone();
+						LocalProperties lProps = candidate.getLocalProperties().clone();
+						node.initProperties(gProps, lProps);
+						target.add(node);
+						
+					}
+				}
 			}
 		}
+//		if (terminationCriterion == null) {
+//			for (PlanNode candidate : candidates) {
+//				BulkIterationPlanNode node = new BulkIterationPlanNode(this, "BulkIteration ("+this.getOperator().getName()+")", in, pspn, candidate);
+//				GlobalProperties gProps = candidate.getGlobalProperties().clone();
+//				LocalProperties lProps = candidate.getLocalProperties().clone();
+//				node.initProperties(gProps, lProps);
+//				target.add(node);
+//			}
+//		}
 		else if (candidates.size() > 0) {
 			List<PlanNode> terminationCriterionCandidates = this.terminationCriterion.getAlternativePlans(estimator);
 

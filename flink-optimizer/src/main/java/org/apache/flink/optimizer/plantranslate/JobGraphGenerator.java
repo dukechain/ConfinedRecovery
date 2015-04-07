@@ -59,6 +59,7 @@ import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.iterative.convergence.WorksetEmptyConvergenceCriterion;
 import org.apache.flink.runtime.iterative.task.IterationHeadPactTask;
 import org.apache.flink.runtime.iterative.task.IterationIntermediatePactTask;
+import org.apache.flink.runtime.iterative.task.IterationSinkPactTask;
 import org.apache.flink.runtime.iterative.task.IterationTailPactTask;
 import org.apache.flink.runtime.jobgraph.AbstractJobVertex;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
@@ -1269,6 +1270,29 @@ public class JobGraphGenerator implements Visitor<PlanNode> {
 			
 			// tell the head that it needs to wait for the solution set updates
 			headConfig.setWaitForSolutionSetUpdate();
+		}
+		
+		// create tails for iteration sinks
+		for(SinkPlanNode sink : bulkNode.getIterationSinks()) {
+			AbstractJobVertex rootOfSinkVertex = (AbstractJobVertex) this.vertices.get(sink);
+			
+			TaskConfig tailConfigOfSink;
+			
+			if (rootOfSinkVertex == null) {
+				// last op is chained
+				final TaskInChain taskInChain = this.chainedTasks.get(sink);
+				if (taskInChain == null) {
+					throw new CompilerException("Bug: Sink inside iteration not found as vertex or chained task.");
+				}
+				rootOfSinkVertex = (AbstractJobVertex) taskInChain.getContainingVertex();
+
+				// the fake channel is statically typed to pact record. no data is sent over this channel anyways.
+				tailConfigOfSink = taskInChain.getTaskConfig();
+			} else {
+				tailConfigOfSink = new TaskConfig(rootOfSinkVertex.getConfiguration());
+			}
+			
+			rootOfSinkVertex.setInvokableClass(IterationSinkPactTask.class);
 		}
 		
 		// ------------------- register the convergence criterion -------------------

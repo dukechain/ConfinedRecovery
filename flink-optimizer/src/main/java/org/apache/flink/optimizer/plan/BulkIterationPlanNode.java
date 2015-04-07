@@ -22,13 +22,17 @@ package org.apache.flink.optimizer.plan;
 import static org.apache.flink.optimizer.plan.PlanNode.SourceAndDamReport.FOUND_SOURCE;
 import static org.apache.flink.optimizer.plan.PlanNode.SourceAndDamReport.FOUND_SOURCE_AND_DAM;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 
 import org.apache.flink.api.common.typeutils.TypeSerializerFactory;
 import org.apache.flink.optimizer.CompilerException;
 import org.apache.flink.optimizer.costs.Costs;
 import org.apache.flink.optimizer.dag.BulkIterationNode;
+import org.apache.flink.optimizer.dag.DataSinkNode;
 import org.apache.flink.optimizer.dag.OptimizerNode;
+import org.apache.flink.optimizer.dag.TempMode;
 import org.apache.flink.runtime.operators.DriverStrategy;
 import org.apache.flink.util.Visitor;
 
@@ -41,6 +45,8 @@ public class BulkIterationPlanNode extends SingleInputPlanNode implements Iterat
 	private PlanNode rootOfTerminationCriterion;
 	
 	private TypeSerializerFactory<?> serializerForIterationChannel;
+	
+	private List<SinkPlanNode> iterationSinks = new ArrayList<SinkPlanNode>();
 	
 	// --------------------------------------------------------------------------------------------
 
@@ -59,6 +65,13 @@ public class BulkIterationPlanNode extends SingleInputPlanNode implements Iterat
 	{
 		this(template, nodeName, input, pspn, rootOfStepFunction);
 		this.rootOfTerminationCriterion = rootOfTerminationCriterion;
+	}
+	
+	public BulkIterationPlanNode(BulkIterationNode template, String nodeName, Channel input,
+			BulkPartialSolutionPlanNode pspn, PlanNode rootOfStepFunction, SinkPlanNode rootOfSink)
+	{
+		this(template, nodeName, input, pspn, rootOfStepFunction);
+		this.iterationSinks.add(rootOfSink);
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -83,6 +96,9 @@ public class BulkIterationPlanNode extends SingleInputPlanNode implements Iterat
 		return this.rootOfTerminationCriterion;
 	}
 	
+	public List<SinkPlanNode> getIterationSinks() {
+		return this.iterationSinks;
+	}
 	// --------------------------------------------------------------------------------------------
 
 	
@@ -138,6 +154,12 @@ public class BulkIterationPlanNode extends SingleInputPlanNode implements Iterat
 		
 		if(this.rootOfTerminationCriterion != null) {
 			this.rootOfTerminationCriterion.accept(visitor);
+		}
+		
+		// circumvent plan finalizer
+		for(SinkPlanNode sink: this.iterationSinks) {
+			sink.setInsideIteration(true);
+			sink.accept(visitor);
 		}
 	}
 

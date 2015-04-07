@@ -264,6 +264,7 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 			 * used for receiving the current iteration result from iteration
 			 * tail
 			 */
+			System.out.println("H "+brokerKey);
 			SuperstepKickoffLatch nextStepKickoff = new SuperstepKickoffLatch();
 			SuperstepKickoffLatchBroker.instance().handIn(brokerKey,
 					nextStepKickoff);
@@ -444,6 +445,7 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 			this.finalOutputCollector.close();
 
 		} finally {
+			System.out.println("finally");
 			// make sure we unregister everything from the broker:
 			// - backchannel
 			// - aggregator registry

@@ -21,6 +21,7 @@ package org.apache.flink.api.common.operators.base;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +34,7 @@ import org.apache.flink.api.common.accumulators.SimpleAccumulator;
 import org.apache.flink.api.common.functions.AbstractRichFunction;
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.RuntimeContext;
+import org.apache.flink.api.common.operators.GenericDataSinkBase;
 import org.apache.flink.api.common.operators.IterationOperator;
 import org.apache.flink.api.common.operators.Operator;
 import org.apache.flink.api.common.operators.OperatorInformation;
@@ -68,6 +70,8 @@ public class BulkIterationBase<T> extends SingleInputOperator<T, T, AbstractRich
 	private ConvergenceCriterion<?> convergenceCriterion;
 
 	private String convergenceCriterionAccumulatorName;
+	
+	private final List<GenericDataSinkBase<?>> iterationSinks = new ArrayList<GenericDataSinkBase<?>>();
 	
 	// --------------------------------------------------------------------------------------------
 	
@@ -335,5 +339,13 @@ public class BulkIterationBase<T> extends SingleInputOperator<T, T, AbstractRich
 	@Override
 	protected List<T> executeOnCollections(List<T> inputData, RuntimeContext runtimeContext, ExecutionConfig executionConfig) {
 		throw new UnsupportedOperationException();
+	}
+	
+	public void addIterationSink(GenericDataSinkBase<?> sink) {
+		this.iterationSinks.add(sink);
+	}
+	
+	public List<GenericDataSinkBase<?>> getIterationSinks() {
+		return this.iterationSinks;
 	}
 }

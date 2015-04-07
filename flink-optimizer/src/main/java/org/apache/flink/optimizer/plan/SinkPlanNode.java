@@ -27,6 +27,8 @@ import org.apache.flink.runtime.operators.DriverStrategy;
  */
 public class SinkPlanNode extends SingleInputPlanNode
 {
+	
+	public boolean insideIteration = false;
 	/**
 	 * Constructs a new sink candidate node that uses <i>NONE</i> as its local strategy. Note that
 	 * local sorting and range partitioning are handled by the incoming channel already.
@@ -46,5 +48,13 @@ public class SinkPlanNode extends SingleInputPlanNode
 		} else {
 			throw new RuntimeException();
 		}
+	}
+	
+	public boolean isInsideIteration() {
+		return insideIteration;
+	}
+	
+	public void setInsideIteration(boolean insideIteration) {
+		this.insideIteration = insideIteration;
 	}
 }

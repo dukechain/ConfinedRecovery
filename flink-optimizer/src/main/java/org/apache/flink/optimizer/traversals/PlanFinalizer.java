@@ -129,7 +129,7 @@ public class PlanFinalizer implements Visitor<PlanNode> {
 			return false;
 		}
 
-		if (visitable instanceof SinkPlanNode) {
+		if (visitable instanceof SinkPlanNode && !((SinkPlanNode) visitable).isInsideIteration()) {
 			this.sinks.add((SinkPlanNode) visitable);
 		}
 		else if (visitable instanceof SourcePlanNode) {

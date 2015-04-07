@@ -57,15 +57,15 @@ public class DataSinkTask<IT> extends AbstractInvokable {
 	// --------------------------------------------------------------------------------------------
 	
 	// OutputFormat instance. volatile, because the asynchronous canceller may access it
-	private volatile OutputFormat<IT> format;
+	protected volatile OutputFormat<IT> format;
 
-	private MutableReader<?> inputReader;
+	protected MutableReader<?> inputReader;
 
 	// input reader
-	private MutableObjectIterator<IT> reader;
+	protected MutableObjectIterator<IT> reader;
 
 	// The serializer for the input type
-	private TypeSerializerFactory<IT> inputTypeSerializerFactory;
+	protected TypeSerializerFactory<IT> inputTypeSerializerFactory;
 	
 	// local strategy
 	private CloseableInputProvider<IT> localStrategy;
@@ -74,9 +74,11 @@ public class DataSinkTask<IT> extends AbstractInvokable {
 	private TaskConfig config;
 	
 	// cancel flag
-	private volatile boolean taskCanceled;
+	public volatile boolean taskCanceled;
 	
 	private volatile boolean cleanupCalled;
+	
+	protected boolean keepFormatOpen = false;
 
 	@Override
 	public void registerInputOutput() {
@@ -201,7 +203,9 @@ public class DataSinkTask<IT> extends AbstractInvokable {
 			// close. We close here such that a regular close throwing an exception marks a task as failed.
 			if (!this.taskCanceled) {
 				this.format.close();
-				this.format = null;
+				if(!keepFormatOpen) {
+					this.format = null;
+				}
 			}
 		}
 		catch (Exception ex) {
@@ -232,7 +236,7 @@ public class DataSinkTask<IT> extends AbstractInvokable {
 			}
 		}
 		finally {
-			if (this.format != null) {
+			if (this.format != null && !keepFormatOpen) {
 				// close format, if it has not been closed, yet.
 				// This should only be the case if we had a previous error, or were canceled.
 				try {

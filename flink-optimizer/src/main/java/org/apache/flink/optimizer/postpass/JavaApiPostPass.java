@@ -113,6 +113,12 @@ public class JavaApiPostPass implements OptimizerPostPass {
 				SingleInputPlanNode addMapper = (SingleInputPlanNode) iterationNode.getRootOfTerminationCriterion();
 				traverseChannel(addMapper.getInput());
 			}
+			
+			for(SinkPlanNode sink: iterationNode.getIterationSinks()) {
+				// descend to the input channel
+				Channel inchannel = sink.getInput();
+				traverseChannel(inchannel);
+			}
 
 			BulkIterationBase<?> operator = (BulkIterationBase<?>) iterationNode.getProgramOperator();
 

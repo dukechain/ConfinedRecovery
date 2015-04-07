@@ -297,6 +297,20 @@ public class GraphCreatingVisitor implements Visitor<Operator<?>> {
 					terminationCriterion = recursiveCreator.con2node.get(iter.getTerminationCriterion());
 				}
 			}
+			
+			// create iteration sinks
+			for(GenericDataSinkBase<?> sink : iter.getIterationSinks()) {
+				DataSinkNode dsn = new DataSinkNode((GenericDataSinkBase<?>) sink);
+				dsn.setParallelism(iterNode.getParallelism());
+				recursiveCreator.con2node.put(sink, dsn);
+				iterNode.addIterationSink(dsn);
+				
+				// first connect to the predecessors
+				dsn.setInput(recursiveCreator.con2node, recursiveCreator.defaultDataExchangeMode);
+				dsn.setBroadcastInputs(recursiveCreator.con2node, recursiveCreator.defaultDataExchangeMode);
+				
+				sink.getInput().accept(recursiveCreator);
+			}
 
 			iterNode.setPartialSolution(partialSolution);
 			iterNode.setNextPartialSolution(rootOfStepFunction, terminationCriterion);

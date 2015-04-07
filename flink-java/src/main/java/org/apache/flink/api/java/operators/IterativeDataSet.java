@@ -18,12 +18,15 @@
 
 package org.apache.flink.api.java.operators;
 
+import org.apache.commons.lang3.Validate;
 import org.apache.flink.api.common.InvalidProgramException;
 import org.apache.flink.api.common.accumulators.ConvergenceCriterion;
+import org.apache.flink.api.common.io.OutputFormat;
 import org.apache.flink.api.common.operators.Operator;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.ExecutionEnvironment;
+import org.apache.flink.api.java.typeutils.InputTypeConfigurable;
 
 /**
  * The IterativeDataSet represents the start of an iteration. It is created from the DataSet that 
@@ -110,5 +113,18 @@ public class IterativeDataSet<T> extends SingleInputOperator<T, T, IterativeData
 		// All the translation magic happens when the iteration end is encountered.
 		throw new InvalidProgramException("A data set that is part of an iteration was used as a sink or action."
 				+ " Did you forget to close the iteration?");
+	}
+	
+	public DataSink<T> output(OutputFormat<T> outputFormat) {
+		Validate.notNull(outputFormat);
+		
+		// configure the type if needed
+		if (outputFormat instanceof InputTypeConfigurable) {
+			((InputTypeConfigurable) outputFormat).setInputType(getType(), context.getConfig() );
+		}
+		
+		DataSink<T> sink = new DataSink<T>(this, outputFormat, getType());
+		this.context.registerIterationDataSink(this, sink);
+		return sink;
 	}
 }

@@ -145,6 +145,15 @@ public abstract class GenericFlatTypePostPass<X, T extends AbstractSchema<X>> im
 				}
 			}
 			
+			for(SinkPlanNode sink : iterationNode.getIterationSinks()) {
+				traverse(sink.getInput().getSource(), createEmptySchema(), false);
+				try {
+					sink.getInput().setSerializer(createSerializer(createEmptySchema()));
+				} catch (MissingFieldTypeInfoException e) {
+					throw new RuntimeException(e);
+				}
+			}
+			
 			// traverse the step function for the first time. create schema only, no utilities
 			traverse(iterationNode.getRootOfStepFunction(), schema, false);
 			
@@ -161,6 +170,15 @@ public abstract class GenericFlatTypePostPass<X, T extends AbstractSchema<X>> im
 				traverse(addMapper.getInput().getSource(), createEmptySchema(), createUtilities);
 				try {
 					addMapper.getInput().setSerializer(createSerializer(createEmptySchema()));
+				} catch (MissingFieldTypeInfoException e) {
+					throw new RuntimeException(e);
+				}
+			}
+			
+			for(SinkPlanNode sink : iterationNode.getIterationSinks()) {
+				traverse(sink.getInput().getSource(), createEmptySchema(), createUtilities);
+				try {
+					sink.getInput().setSerializer(createSerializer(createEmptySchema()));
 				} catch (MissingFieldTypeInfoException e) {
 					throw new RuntimeException(e);
 				}

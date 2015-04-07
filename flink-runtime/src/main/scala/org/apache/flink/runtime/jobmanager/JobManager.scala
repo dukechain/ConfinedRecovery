@@ -547,6 +547,7 @@ class JobManager(val flinkConfiguration: Configuration,
         }
         
         this.iterationManagers = Nil
+        
         for (vertex <- jobGraph.getVertices
             if (vertex.getInvokableClassName
             .equalsIgnoreCase("org.apache.flink.runtime.iterative.task.IterationHeadPactTask"))) {

@@ -41,9 +41,12 @@ public class OperatorTranslation {
 	/** The already translated operations */
 	private Map<DataSet<?>, Operator<?>> translated = new HashMap<DataSet<?>, Operator<?>>();
 	
+	private Map<IterativeDataSet<?>, DataSink<?>> iterationSinks;
 	
-	public JavaPlan translateToPlan(List<DataSink<?>> sinks, String jobName) {
+	public JavaPlan translateToPlan(List<DataSink<?>> sinks, Map<IterativeDataSet<?>, DataSink<?>> iterationSinks, String jobName) {
 		List<GenericDataSinkBase<?>> planSinks = new ArrayList<GenericDataSinkBase<?>>();
+		
+		this.iterationSinks = iterationSinks;
 		
 		for (DataSink<?> sink : sinks) {
 			planSinks.add(translate(sink));
@@ -208,6 +211,10 @@ public class OperatorTranslation {
 			}
 			iterationOperator.registerConvergenceCriterion(iterationEnd.getConvergenceCriterionAccumulatorName(), iterationEnd.getConvergenceCriterion());
 		}
+		
+		DataSink<?> s = this.iterationSinks.get(untypedIterationEnd.getIterationHead());
+		if(s != null)
+			iterationOperator.addIterationSink(translate(s));
 
 		return iterationOperator;
 	}
