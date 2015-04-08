@@ -20,23 +20,16 @@
 package org.apache.flink.runtime.iterative.task;
 
 import java.io.IOException;
-import java.util.HashMap;
 
-import org.apache.flink.api.common.accumulators.Accumulator;
+import org.apache.flink.api.common.io.FileOutputFormat;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.runtime.accumulators.AccumulatorEvent;
+import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.io.network.api.reader.MutableReader;
 import org.apache.flink.runtime.iterative.concurrent.SuperstepKickoffLatch;
 import org.apache.flink.runtime.iterative.concurrent.SuperstepKickoffLatchBroker;
-import org.apache.flink.runtime.messages.JobManagerMessages;
 import org.apache.flink.runtime.operators.DataSinkTask;
 import org.apache.flink.runtime.operators.util.TaskConfig;
 import org.apache.flink.util.MutableObjectIterator;
-import org.apache.flink.api.common.io.FileOutputFormat;
-import org.apache.flink.core.fs.Path;
-
-import akka.pattern.Patterns;
-import scala.concurrent.Future;
 
 public class IterationSinkPactTask<IT> extends DataSinkTask<IT> {
 

@@ -46,6 +46,10 @@ public class BulkIterationWithSinkITCase extends JavaProgramTestBase {
 	private String result1 = "1\n2\n3\n4\n5\n6\n7\n8";
 	private String result6 = "6\n7\n8\n9\n10\n11\n12\n13";
 	private String result10= "10\n11\n12\n13\n14\n15\n16\n17";
+	
+	protected boolean skipCollectionExecution() {
+		return true;
+	};
 
 	@Override
 	protected void preSubmit() throws Exception {

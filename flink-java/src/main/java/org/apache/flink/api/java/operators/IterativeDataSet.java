@@ -115,16 +115,16 @@ public class IterativeDataSet<T> extends SingleInputOperator<T, T, IterativeData
 				+ " Did you forget to close the iteration?");
 	}
 	
-	public DataSink<T> output(OutputFormat<T> outputFormat) {
-		Validate.notNull(outputFormat);
-		
-		// configure the type if needed
-		if (outputFormat instanceof InputTypeConfigurable) {
-			((InputTypeConfigurable) outputFormat).setInputType(getType(), context.getConfig() );
-		}
-		
-		DataSink<T> sink = new DataSink<T>(this, outputFormat, getType());
-		this.context.registerIterationDataSink(this, sink);
-		return sink;
-	}
+//	public DataSink<T> output(OutputFormat<T> outputFormat) {
+//		Validate.notNull(outputFormat);
+//		
+//		// configure the type if needed
+//		if (outputFormat instanceof InputTypeConfigurable) {
+//			((InputTypeConfigurable) outputFormat).setInputType(getType(), context.getConfig() );
+//		}
+//		
+//		DataSink<T> sink = new DataSink<T>(this, outputFormat, getType());
+//		this.context.registerIterationDataSink(this, sink);
+//		return sink;
+//	}
 }

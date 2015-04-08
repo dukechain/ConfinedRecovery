@@ -50,12 +50,16 @@ import org.apache.flink.api.java.io.ParallelIteratorInputFormat;
 import org.apache.flink.api.java.io.PrimitiveInputFormat;
 import org.apache.flink.api.java.io.TextInputFormat;
 import org.apache.flink.api.java.io.TextValueInputFormat;
+import org.apache.flink.api.java.operators.BulkIterationResultSet;
 import org.apache.flink.api.java.operators.DataSink;
 import org.apache.flink.api.java.operators.DataSource;
+import org.apache.flink.api.java.operators.DeltaIteration;
+import org.apache.flink.api.java.operators.DeltaIterationResultSet;
 import org.apache.flink.api.java.operators.IterativeDataSet;
-import org.apache.flink.api.java.operators.Operator;
 import org.apache.flink.api.java.operators.OperatorTranslation;
+import org.apache.flink.api.java.operators.TwoInputOperator;
 import org.apache.flink.api.java.operators.translation.JavaPlan;
+import org.apache.flink.api.java.operators.SingleInputOperator;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.typeutils.GenericTypeInfo;
 import org.apache.flink.api.java.typeutils.PojoTypeInfo;
@@ -114,7 +118,7 @@ public abstract class ExecutionEnvironment {
 	
 	private final List<DataSink<?>> sinks = new ArrayList<DataSink<?>>();
 	
-	private final Map<IterativeDataSet<?>, ArrayList<DataSink<?>>> iterationSinks = new HashMap<IterativeDataSet<?>, ArrayList<DataSink<?>>>();
+	private final Map<Object, ArrayList<DataSink<?>>> iterationSinks = new HashMap<Object, ArrayList<DataSink<?>>>();
 	
 	private final List<Tuple2<String, DistributedCacheEntry>> cacheFile = new ArrayList<Tuple2<String, DistributedCacheEntry>>();
 
@@ -998,10 +1002,46 @@ public abstract class ExecutionEnvironment {
 	 * @param sink The sink to add for execution.
 	 */
 	void registerDataSink(DataSink<?> sink) {
-		this.sinks.add(sink);
+		
+		DataSet<?> iteration;
+		if((iteration = getContainingIteration(sink.getDataSet())) != null) {
+			this.registerIterationDataSink(iteration, sink);
+		}
+		else {
+			this.sinks.add(sink);
+		}
 	}
 	
-	public void registerIterationDataSink(IterativeDataSet<?> iteration, DataSink<?> sink) {
+	private DataSet<?> getContainingIteration(DataSet<?> dataSet) {
+		if(dataSet instanceof IterativeDataSet<?> 
+		|| dataSet instanceof DeltaIteration.SolutionSetPlaceHolder<?>
+		|| dataSet instanceof DeltaIteration.WorksetPlaceHolder<?>) {
+			return dataSet;
+		}
+		else if(dataSet instanceof BulkIterationResultSet<?> 
+		|| dataSet instanceof DeltaIterationResultSet<?, ?> ) {
+			return null;
+		}
+		else if(dataSet instanceof SingleInputOperator<?,?,?>) {
+			return getContainingIteration(((SingleInputOperator<?,?,?>) dataSet).getInput());
+		}
+		else if(dataSet instanceof TwoInputOperator<?,?,?,?>) {
+			DataSet<?> tmp = getContainingIteration(((TwoInputOperator<?,?,?,?>) dataSet).getInput1());
+			if(tmp != null) {
+				return tmp;
+			}
+			tmp = getContainingIteration(((TwoInputOperator<?,?,?,?>) dataSet).getInput2());
+			if(tmp != null) {
+				return tmp;
+			}
+			return null;
+		}
+		else {
+			return null;
+		}
+	}
+	
+	public void registerIterationDataSink(Object iteration, DataSink<?> sink) {
 		if(this.iterationSinks.containsKey(iteration)) {
 			this.iterationSinks.get(iteration).add(sink);
 		}

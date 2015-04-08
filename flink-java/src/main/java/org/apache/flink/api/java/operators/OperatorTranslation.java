@@ -40,9 +40,9 @@ public class OperatorTranslation {
 	/** The already translated operations */
 	private Map<DataSet<?>, Operator<?>> translated = new HashMap<DataSet<?>, Operator<?>>();
 	
-	private Map<IterativeDataSet<?>, ArrayList<DataSink<?>>> iterationSinks;
+	private Map<Object, ArrayList<DataSink<?>>> iterationSinks;
 	
-	public JavaPlan translateToPlan(List<DataSink<?>> sinks, Map<IterativeDataSet<?>, ArrayList<DataSink<?>>> iterationSinks, String jobName) {
+	public JavaPlan translateToPlan(List<DataSink<?>> sinks, Map<Object, ArrayList<DataSink<?>>> iterationSinks, String jobName) {
 		List<GenericDataSinkBase<?>> planSinks = new ArrayList<GenericDataSinkBase<?>>();
 		
 		this.iterationSinks = iterationSinks;
