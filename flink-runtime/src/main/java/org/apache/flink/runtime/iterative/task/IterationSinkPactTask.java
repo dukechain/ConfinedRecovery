@@ -1,8 +1,26 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+
 package org.apache.flink.runtime.iterative.task;
 
 import java.io.IOException;
 import java.util.HashMap;
-import java.util.Map;
 
 import org.apache.flink.api.common.accumulators.Accumulator;
 import org.apache.flink.configuration.Configuration;
@@ -14,7 +32,7 @@ import org.apache.flink.runtime.messages.JobManagerMessages;
 import org.apache.flink.runtime.operators.DataSinkTask;
 import org.apache.flink.runtime.operators.util.TaskConfig;
 import org.apache.flink.util.MutableObjectIterator;
-import org.apache.flink.api.java.io.CsvOutputFormat;
+import org.apache.flink.api.common.io.FileOutputFormat;
 import org.apache.flink.core.fs.Path;
 
 import akka.pattern.Patterns;
@@ -48,27 +66,25 @@ public class IterationSinkPactTask<IT> extends DataSinkTask<IT> {
 		
 		keepFormatOpen = true;
 		
-		System.out.println("S "+brokerKey());
 		SuperstepKickoffLatch nextSuperstepLatch = SuperstepKickoffLatchBroker.instance().get(brokerKey());
 		
 		while(!taskCanceled && !terminationRequested()) {
 			
-			if(format instanceof CsvOutputFormat) {
-				CsvOutputFormat csv = (CsvOutputFormat) format;
-				csv.setOutputFilePath(new Path(csv.getOutputFilePath().toUri().toString()+"_"+this.superstepNum));
+			if(format instanceof FileOutputFormat) {
+				FileOutputFormat<?> fileFormat = (FileOutputFormat<?>) format;
+				if(fileFormat.getIterationWriteMode().equals(FileOutputFormat.IterationWriteMode.KEEP_ALL)) {
+					String pathName = fileFormat.getOutputFilePath().toUri().toString();
+					if(this.superstepNum == 1) {
+						pathName += "_"+this.superstepNum;
+					}
+					else {
+						pathName = pathName.substring(0, pathName.length()-2)+"_"+this.superstepNum;
+					}
+					fileFormat.setOutputFilePath(new Path(pathName));
+				}
 			}
 			
 			super.invoke();
-			
-			// Report end of superstep to JobManager
-			TaskConfig taskConfig = new TaskConfig(getTaskConfiguration());
-			JobManagerMessages.ReportIterationWorkerDone workerDoneEvent = new JobManagerMessages.ReportIterationWorkerDone(
-					taskConfig.getIterationId(),
-					new AccumulatorEvent(getEnvironment().getJobID(),
-							new HashMap<String, Accumulator<?, ?>>()));
-			
-			//Patterns.ask(getEnvironment().getJobManager(),
-			//		workerDoneEvent, 3600000); // 1 hour
 			
 			// check if termination was requested
 			verifyEndOfSuperstepState();

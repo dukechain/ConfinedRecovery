@@ -55,6 +55,18 @@ public abstract class FileOutputFormat<IT> implements OutputFormat<IT>, Initiali
 		PARONLY
 	}
 	
+	/**
+	 * Behavior when inside of an iteration
+	 */
+	public static enum IterationWriteMode {
+		
+		/** Only the result of the latest iteration is written and kept */
+		OVERWRITE,	
+		
+		/** Every iteration writes out its own file, appending the current superstep number */
+		KEEP_ALL
+	}
+	
 	// --------------------------------------------------------------------------------------------
 
 	private static WriteMode DEFAULT_WRITE_MODE;
@@ -106,6 +118,11 @@ public abstract class FileOutputFormat<IT> implements OutputFormat<IT>, Initiali
 	 * The output directory mode
 	 */
 	private OutputDirectoryMode outputDirectoryMode;
+	
+	/**
+	 * The iteration write mode
+	 */
+	private IterationWriteMode iterationWriteMode = IterationWriteMode.OVERWRITE;
 
 	// --------------------------------------------------------------------------------------------
 	
@@ -150,7 +167,18 @@ public abstract class FileOutputFormat<IT> implements OutputFormat<IT>, Initiali
 	public WriteMode getWriteMode() {
 		return this.writeMode;
 	}
-
+	
+	public IterationWriteMode getIterationWriteMode() {
+		return this.iterationWriteMode;
+	}
+	
+	public void setIterationWriteMode(IterationWriteMode mode) {
+		if (mode == null) {
+			throw new NullPointerException();
+		}
+		
+		this.iterationWriteMode = mode;
+	}
 	
 	public void setOutputDirectoryMode(OutputDirectoryMode mode) {
 		if (mode == null) {

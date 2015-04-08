@@ -1188,7 +1188,6 @@ public class JobGraphGenerator implements Visitor<PlanNode> {
 		
 		// ------------ finalize the head config with the final outputs ------------
 		final int numStepFunctionOuts = headConfig.getNumOutputs();
-		final int numFinalOuts = headFinalOutputConfig.getNumOutputs();
 		
 		if (numStepFunctionOuts == 0) {
 			throw new CompilerException("The iteration has no operation inside the step function.");
@@ -1275,23 +1274,6 @@ public class JobGraphGenerator implements Visitor<PlanNode> {
 		// create tails for iteration sinks
 		for(SinkPlanNode sink : bulkNode.getIterationSinks()) {
 			AbstractJobVertex rootOfSinkVertex = (AbstractJobVertex) this.vertices.get(sink);
-			
-			TaskConfig tailConfigOfSink;
-			
-			if (rootOfSinkVertex == null) {
-				// last op is chained
-				final TaskInChain taskInChain = this.chainedTasks.get(sink);
-				if (taskInChain == null) {
-					throw new CompilerException("Bug: Sink inside iteration not found as vertex or chained task.");
-				}
-				rootOfSinkVertex = (AbstractJobVertex) taskInChain.getContainingVertex();
-
-				// the fake channel is statically typed to pact record. no data is sent over this channel anyways.
-				tailConfigOfSink = taskInChain.getTaskConfig();
-			} else {
-				tailConfigOfSink = new TaskConfig(rootOfSinkVertex.getConfiguration());
-			}
-			
 			rootOfSinkVertex.setInvokableClass(IterationSinkPactTask.class);
 		}
 		

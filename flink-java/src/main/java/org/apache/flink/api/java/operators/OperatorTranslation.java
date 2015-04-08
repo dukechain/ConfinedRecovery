@@ -18,8 +18,6 @@
 
 package org.apache.flink.api.java.operators;
 
-import org.apache.flink.api.java.DataSet;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -33,6 +31,7 @@ import org.apache.flink.api.common.operators.Operator;
 import org.apache.flink.api.common.operators.UnaryOperatorInformation;
 import org.apache.flink.api.common.operators.base.BulkIterationBase;
 import org.apache.flink.api.common.operators.base.DeltaIterationBase;
+import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.operators.translation.JavaPlan;
 import org.apache.flink.configuration.Configuration;
 
@@ -41,9 +40,9 @@ public class OperatorTranslation {
 	/** The already translated operations */
 	private Map<DataSet<?>, Operator<?>> translated = new HashMap<DataSet<?>, Operator<?>>();
 	
-	private Map<IterativeDataSet<?>, DataSink<?>> iterationSinks;
+	private Map<IterativeDataSet<?>, ArrayList<DataSink<?>>> iterationSinks;
 	
-	public JavaPlan translateToPlan(List<DataSink<?>> sinks, Map<IterativeDataSet<?>, DataSink<?>> iterationSinks, String jobName) {
+	public JavaPlan translateToPlan(List<DataSink<?>> sinks, Map<IterativeDataSet<?>, ArrayList<DataSink<?>>> iterationSinks, String jobName) {
 		List<GenericDataSinkBase<?>> planSinks = new ArrayList<GenericDataSinkBase<?>>();
 		
 		this.iterationSinks = iterationSinks;
@@ -212,10 +211,13 @@ public class OperatorTranslation {
 			iterationOperator.registerConvergenceCriterion(iterationEnd.getConvergenceCriterionAccumulatorName(), iterationEnd.getConvergenceCriterion());
 		}
 		
-		DataSink<?> s = this.iterationSinks.get(untypedIterationEnd.getIterationHead());
-		if(s != null)
-			iterationOperator.addIterationSink(translate(s));
-
+		ArrayList<DataSink<?>> sinks = this.iterationSinks.get(untypedIterationEnd.getIterationHead());
+		if(sinks != null) {
+			for(DataSink<?> s : sinks) {
+				iterationOperator.addIterationSink(translate(s));
+			}
+		}
+		
 		return iterationOperator;
 	}
 	

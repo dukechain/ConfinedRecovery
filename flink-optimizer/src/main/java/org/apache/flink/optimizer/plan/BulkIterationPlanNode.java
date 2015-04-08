@@ -30,9 +30,7 @@ import org.apache.flink.api.common.typeutils.TypeSerializerFactory;
 import org.apache.flink.optimizer.CompilerException;
 import org.apache.flink.optimizer.costs.Costs;
 import org.apache.flink.optimizer.dag.BulkIterationNode;
-import org.apache.flink.optimizer.dag.DataSinkNode;
 import org.apache.flink.optimizer.dag.OptimizerNode;
-import org.apache.flink.optimizer.dag.TempMode;
 import org.apache.flink.runtime.operators.DriverStrategy;
 import org.apache.flink.util.Visitor;
 
@@ -68,10 +66,18 @@ public class BulkIterationPlanNode extends SingleInputPlanNode implements Iterat
 	}
 	
 	public BulkIterationPlanNode(BulkIterationNode template, String nodeName, Channel input,
-			BulkPartialSolutionPlanNode pspn, PlanNode rootOfStepFunction, SinkPlanNode rootOfSink)
+			BulkPartialSolutionPlanNode pspn, PlanNode rootOfStepFunction, List<SinkPlanNode> rootOfSinks)
 	{
 		this(template, nodeName, input, pspn, rootOfStepFunction);
-		this.iterationSinks.add(rootOfSink);
+		this.iterationSinks.addAll(rootOfSinks);
+	}
+	
+	public BulkIterationPlanNode(BulkIterationNode template, String nodeName, Channel input,
+			BulkPartialSolutionPlanNode pspn, PlanNode rootOfStepFunction, PlanNode rootOfTerminationCriterion, List<SinkPlanNode> rootOfSinks)
+	{
+		this(template, nodeName, input, pspn, rootOfStepFunction);
+		this.rootOfTerminationCriterion = rootOfTerminationCriterion;
+		this.iterationSinks.addAll(rootOfSinks);
 	}
 
 	// --------------------------------------------------------------------------------------------

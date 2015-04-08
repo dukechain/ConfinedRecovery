@@ -251,7 +251,7 @@ public class BulkIterationNode extends SingleInputNode implements IterationNode 
 			this.terminationCriterion.accept(new InterestingPropertyVisitor(estimator));
 		}
 		
-		// todo check this
+		// interesting properties for iteration sinks
 		for(DataSinkNode sink : this.iterationSinks) {
 			sink.accept(new InterestingPropertyVisitor(estimator));
 		}
@@ -387,39 +387,51 @@ public class BulkIterationNode extends SingleInputNode implements IterationNode 
 		
 		// 5) Create a candidate for the Iteration Node for every remaining plan of the step function.
 		if (terminationCriterion == null) {
-			List<PlanNode> iterationSinkCandidates = this.iterationSinks.get(0).getAlternativePlans(estimator);
 			
 			for (PlanNode candidate : candidates) {
-				for (PlanNode iterationSinkCandidate : iterationSinkCandidates) {
-					if (singleRoot.areBranchCompatible(candidate, iterationSinkCandidate)) {
-						BulkIterationPlanNode node = new BulkIterationPlanNode(this, "BulkIteration ("+this.getOperator().getName()+")", in, pspn, candidate, (SinkPlanNode) iterationSinkCandidate);
-						GlobalProperties gProps = candidate.getGlobalProperties().clone();
-						LocalProperties lProps = candidate.getLocalProperties().clone();
-						node.initProperties(gProps, lProps);
-						target.add(node);
-						
+				List<SinkPlanNode> iterationSinksCompatible = new ArrayList<SinkPlanNode>();
+				for(DataSinkNode dsn : this.iterationSinks) {
+					List<PlanNode> iterationSinkCandidates = dsn.getAlternativePlans(estimator);
+					for (PlanNode iterationSinkCandidate : iterationSinkCandidates) {
+						if(singleRoot.areBranchCompatible(candidate, iterationSinkCandidate)) {
+							iterationSinksCompatible.add((SinkPlanNode) iterationSinkCandidate);
+						}
 					}
 				}
+				
+				BulkIterationPlanNode node = new BulkIterationPlanNode(this, "BulkIteration ("+this.getOperator().getName()+")", in, pspn, candidate, iterationSinksCompatible);
+				GlobalProperties gProps = candidate.getGlobalProperties().clone();
+				LocalProperties lProps = candidate.getLocalProperties().clone();
+				node.initProperties(gProps, lProps);
+				target.add(node);
 			}
 		}
-//		if (terminationCriterion == null) {
-//			for (PlanNode candidate : candidates) {
-//				BulkIterationPlanNode node = new BulkIterationPlanNode(this, "BulkIteration ("+this.getOperator().getName()+")", in, pspn, candidate);
-//				GlobalProperties gProps = candidate.getGlobalProperties().clone();
-//				LocalProperties lProps = candidate.getLocalProperties().clone();
-//				node.initProperties(gProps, lProps);
-//				target.add(node);
-//			}
-//		}
 		else if (candidates.size() > 0) {
 			List<PlanNode> terminationCriterionCandidates = this.terminationCriterion.getAlternativePlans(estimator);
 
 			SingleRootJoiner singleRoot = (SingleRootJoiner) this.singleRoot;
 			
 			for (PlanNode candidate : candidates) {
+				
+				List<SinkPlanNode> iterationSinksCompatible = new ArrayList<SinkPlanNode>();
+				for(DataSinkNode dsn : this.iterationSinks) {
+					List<PlanNode> iterationSinkCandidates = dsn.getAlternativePlans(estimator);
+					for (PlanNode iterationSinkCandidate : iterationSinkCandidates) {
+						if(singleRoot.areBranchCompatible(candidate, iterationSinkCandidate)) {
+							iterationSinksCompatible.add((SinkPlanNode) iterationSinkCandidate);
+						}
+					}
+				}
+				
 				for (PlanNode terminationCandidate : terminationCriterionCandidates) {
 					if (singleRoot.areBranchCompatible(candidate, terminationCandidate)) {
-						BulkIterationPlanNode node = new BulkIterationPlanNode(this, "BulkIteration ("+this.getOperator().getName()+")", in, pspn, candidate, terminationCandidate);
+						BulkIterationPlanNode node ;
+						if(iterationSinksCompatible.size() == 0) {
+							node = new BulkIterationPlanNode(this, "BulkIteration ("+this.getOperator().getName()+")", in, pspn, candidate, terminationCandidate);
+						}
+						else {
+							node = new BulkIterationPlanNode(this, "BulkIteration ("+this.getOperator().getName()+")", in, pspn, candidate, terminationCandidate, iterationSinksCompatible);
+						}
 						GlobalProperties gProps = candidate.getGlobalProperties().clone();
 						LocalProperties lProps = candidate.getLocalProperties().clone();
 						node.initProperties(gProps, lProps);

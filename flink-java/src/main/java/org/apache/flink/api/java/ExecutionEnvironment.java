@@ -30,9 +30,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import com.esotericsoftware.kryo.Serializer;
-import com.google.common.base.Joiner;
-
 import org.apache.commons.lang3.Validate;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.InvalidProgramException;
@@ -77,6 +74,9 @@ import org.apache.hadoop.mapreduce.Job;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.esotericsoftware.kryo.Serializer;
+import com.google.common.base.Joiner;
+
 /**
  * The ExecutionEnviroment is the context in which a program is executed. A
  * {@link LocalEnvironment} will cause execution in the current JVM, a
@@ -114,7 +114,7 @@ public abstract class ExecutionEnvironment {
 	
 	private final List<DataSink<?>> sinks = new ArrayList<DataSink<?>>();
 	
-	private final Map<IterativeDataSet<?>, DataSink<?>> iterationSinks = new HashMap<IterativeDataSet<?>, DataSink<?>>();
+	private final Map<IterativeDataSet<?>, ArrayList<DataSink<?>>> iterationSinks = new HashMap<IterativeDataSet<?>, ArrayList<DataSink<?>>>();
 	
 	private final List<Tuple2<String, DistributedCacheEntry>> cacheFile = new ArrayList<Tuple2<String, DistributedCacheEntry>>();
 
@@ -1002,7 +1002,14 @@ public abstract class ExecutionEnvironment {
 	}
 	
 	public void registerIterationDataSink(IterativeDataSet<?> iteration, DataSink<?> sink) {
-		this.iterationSinks.put(iteration, sink);
+		if(this.iterationSinks.containsKey(iteration)) {
+			this.iterationSinks.get(iteration).add(sink);
+		}
+		else {
+			ArrayList<DataSink<?>> sinks = new ArrayList<DataSink<?>>();
+			sinks.add(sink);
+			this.iterationSinks.put(iteration, sinks);
+		}
 	}
 	
 	/**
