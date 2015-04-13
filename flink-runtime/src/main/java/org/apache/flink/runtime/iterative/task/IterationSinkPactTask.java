@@ -20,16 +20,25 @@
 package org.apache.flink.runtime.iterative.task;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
+import org.apache.flink.api.common.accumulators.Accumulator;
 import org.apache.flink.api.common.io.FileOutputFormat;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.Path;
+import org.apache.flink.runtime.accumulators.AccumulatorEvent;
+import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.network.api.reader.MutableReader;
 import org.apache.flink.runtime.iterative.concurrent.SuperstepKickoffLatch;
 import org.apache.flink.runtime.iterative.concurrent.SuperstepKickoffLatchBroker;
+import org.apache.flink.runtime.messages.JobManagerMessages;
 import org.apache.flink.runtime.operators.DataSinkTask;
 import org.apache.flink.runtime.operators.util.TaskConfig;
 import org.apache.flink.util.MutableObjectIterator;
+
+import scala.concurrent.Future;
+import akka.pattern.Patterns;
 
 public class IterationSinkPactTask<IT> extends DataSinkTask<IT> {
 
@@ -49,7 +58,6 @@ public class IterationSinkPactTask<IT> extends DataSinkTask<IT> {
 	@Override
 	public void invoke() throws Exception
 	{
-		
 		// obtain task configuration (including stub parameters)
 		Configuration taskConf = getTaskConfiguration();
 		this.config = new TaskConfig(taskConf);
@@ -78,6 +86,17 @@ public class IterationSinkPactTask<IT> extends DataSinkTask<IT> {
 			}
 			
 			super.invoke();
+			
+			Environment env = getEnvironment();
+			
+			// Report end of superstep to JobManager
+			TaskConfig taskConfig = new TaskConfig(getTaskConfiguration());
+			JobManagerMessages.ReportIterationWorkerDone workerDoneEvent = new JobManagerMessages.ReportIterationWorkerDone(
+					taskConfig.getIterationId(),
+					new AccumulatorEvent(getEnvironment().getJobID(), new HashMap<String, Accumulator<?, ?>>()));
+
+			
+			Patterns.ask(env.getJobManager(), workerDoneEvent, 3600000);
 			
 			// check if termination was requested
 			verifyEndOfSuperstepState();

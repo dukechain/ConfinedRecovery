@@ -300,6 +300,8 @@ public class GraphCreatingVisitor implements Visitor<Operator<?>> {
 			
 			// create iteration sinks
 			for(GenericDataSinkBase<?> sink : iter.getIterationSinks()) {
+				sink.getInput().accept(recursiveCreator);
+				
 				DataSinkNode dsn = new DataSinkNode((GenericDataSinkBase<?>) sink);
 				dsn.setParallelism(iterNode.getParallelism());
 				recursiveCreator.con2node.put(sink, dsn);
@@ -308,8 +310,6 @@ public class GraphCreatingVisitor implements Visitor<Operator<?>> {
 				// first connect to the predecessors
 				dsn.setInput(recursiveCreator.con2node, recursiveCreator.defaultDataExchangeMode);
 				dsn.setBroadcastInputs(recursiveCreator.con2node, recursiveCreator.defaultDataExchangeMode);
-				
-				sink.getInput().accept(recursiveCreator);
 			}
 
 			iterNode.setPartialSolution(partialSolution);
@@ -393,6 +393,20 @@ public class GraphCreatingVisitor implements Visitor<Operator<?>> {
 
 			final OptimizerNode nextWorksetNode = recursiveCreator.con2node.get(iter.getNextWorkset());
 			final OptimizerNode solutionSetDeltaNode = recursiveCreator.con2node.get(iter.getSolutionSetDelta());
+			
+			// create iteration sinks
+			for(GenericDataSinkBase<?> sink : iter.getIterationSinks()) {
+				sink.getInput().accept(recursiveCreator);
+				
+				DataSinkNode dsn = new DataSinkNode((GenericDataSinkBase<?>) sink);
+				dsn.setParallelism(iterNode.getParallelism());
+				recursiveCreator.con2node.put(sink, dsn);
+				iterNode.addIterationSink(dsn);
+				
+				// first connect to the predecessors
+				dsn.setInput(recursiveCreator.con2node, recursiveCreator.defaultDataExchangeMode);
+				dsn.setBroadcastInputs(recursiveCreator.con2node, recursiveCreator.defaultDataExchangeMode);
+			}
 
 			// set the step function nodes to the iteration node
 			iterNode.setPartialSolution(solutionSetNode, worksetNode);

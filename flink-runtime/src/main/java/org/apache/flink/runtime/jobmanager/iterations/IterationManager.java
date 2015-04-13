@@ -55,6 +55,10 @@ public class IterationManager {
 	
 	int numberOfEventsUntilEndOfSuperstep;
 	
+	int numberOfTails;
+	
+	int parallelism;
+	
 	int maxNumberOfIterations;
 	
 	int currentIteration = 1; // count starts at 1, not 0
@@ -75,12 +79,14 @@ public class IterationManager {
 	 
 	private CopyOnWriteArrayList<ActorRef> workers = new CopyOnWriteArrayList<ActorRef>();
 	
-	public IterationManager(JobID jobId, int iterationId, int numberOfEventsUntilEndOfSuperstep, int maxNumberOfIterations, 
+	public IterationManager(JobID jobId, int iterationId, int parallelism, int maxNumberOfIterations, 
 			AccumulatorManager accumulatorManager, ActorRef jobManager) throws IOException {
-		Preconditions.checkArgument(numberOfEventsUntilEndOfSuperstep > 0);
+		Preconditions.checkArgument(parallelism > 0);
 		this.jobId = jobId;
 		this.iterationId = iterationId;
-		this.numberOfEventsUntilEndOfSuperstep = numberOfEventsUntilEndOfSuperstep;
+		this.numberOfEventsUntilEndOfSuperstep = parallelism;
+		this.parallelism = parallelism;
+		this.numberOfTails = 1;
 		this.maxNumberOfIterations = maxNumberOfIterations;
 		this.accumulatorManager = accumulatorManager;
 		this.iterationAccumulators = new HashSet<String>();
@@ -228,6 +234,11 @@ public class IterationManager {
 
 	public int getIterationId() {
 		return iterationId;
+	}
+	
+	public void setNumberOfTails(int number) {
+		this.numberOfTails = number;
+		this.numberOfEventsUntilEndOfSuperstep = this.numberOfTails * this.parallelism;
 	}
 	
 	/**

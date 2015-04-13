@@ -147,6 +147,13 @@ public class JavaApiPostPass implements OptimizerPostPass {
 			iterationNode.setSolutionSetComparator(createComparator(operator.getOperatorInfo().getFirstInputType(),
 					iterationNode.getSolutionSetKeyFields(), getSortOrders(iterationNode.getSolutionSetKeyFields(), null)));
 			
+			
+			for(SinkPlanNode sink: iterationNode.getIterationSinks()) {
+				// descend to the input channel
+				Channel inchannel = sink.getInput();
+				traverseChannel(inchannel);
+			}
+			
 			// traverse the inputs
 			traverseChannel(iterationNode.getInput1());
 			traverseChannel(iterationNode.getInput2());

@@ -175,15 +175,6 @@ public abstract class GenericFlatTypePostPass<X, T extends AbstractSchema<X>> im
 				}
 			}
 			
-			for(SinkPlanNode sink : iterationNode.getIterationSinks()) {
-				traverse(sink.getInput().getSource(), createEmptySchema(), createUtilities);
-				try {
-					sink.getInput().setSerializer(createSerializer(createEmptySchema()));
-				} catch (MissingFieldTypeInfoException e) {
-					throw new RuntimeException(e);
-				}
-			}
-			
 			// take the schema from the partial solution node and add its fields to the iteration result schema.
 			// input and output schema need to be identical, so this is essentially a sanity check
 			addSchemaToSchema(pss, schema, iterationNode.getProgramOperator().getName());
@@ -229,6 +220,15 @@ public abstract class GenericFlatTypePostPass<X, T extends AbstractSchema<X>> im
 			}
 			if (iterationNode.getSolutionSetDeltaPlanNode() instanceof NAryUnionPlanNode) {
 				throw new CompilerException("Optimizer cannot compile a workset iteration step function where the solution set delta is produced by a Union node.");
+			}
+
+			for(SinkPlanNode sink : iterationNode.getIterationSinks()) {
+				traverse(sink.getInput().getSource(), createEmptySchema(), false);
+				try {
+					sink.getInput().setSerializer(createSerializer(createEmptySchema()));
+				} catch (MissingFieldTypeInfoException e) {
+					throw new RuntimeException(e);
+				}
 			}
 			
 			// traverse the step function

@@ -42,11 +42,13 @@ import org.apache.flink.optimizer.dataproperties.RequestedGlobalProperties;
 import org.apache.flink.optimizer.dataproperties.RequestedLocalProperties;
 import org.apache.flink.optimizer.operators.OperatorDescriptorDual;
 import org.apache.flink.optimizer.operators.SolutionSetDeltaOperator;
+import org.apache.flink.optimizer.plan.BulkIterationPlanNode;
 import org.apache.flink.optimizer.plan.Channel;
 import org.apache.flink.optimizer.plan.DualInputPlanNode;
 import org.apache.flink.optimizer.plan.NamedChannel;
 import org.apache.flink.optimizer.plan.PlanNode;
 import org.apache.flink.optimizer.plan.SingleInputPlanNode;
+import org.apache.flink.optimizer.plan.SinkPlanNode;
 import org.apache.flink.optimizer.plan.SolutionSetPlanNode;
 import org.apache.flink.optimizer.plan.WorksetIterationPlanNode;
 import org.apache.flink.optimizer.plan.WorksetPlanNode;
@@ -84,11 +86,13 @@ public class WorksetIterationNode extends TwoInputNode implements IterationNode 
 	
 	private DagConnection nextWorksetRootConnection;
 	
-	private SingleRootJoiner singleRoot;
+	private TwoInputNode singleRoot;
 	
 	private boolean solutionDeltaImmediatelyAfterSolutionJoin;
 	
 	private final int costWeight;
+	
+	private List<DataSinkNode> iterationSinks = new ArrayList<DataSinkNode>();
 
 	// --------------------------------------------------------------------------------------------
 	
@@ -188,12 +192,30 @@ public class WorksetIterationNode extends TwoInputNode implements IterationNode 
 		this.solutionSetDelta = solutionSetDeltaUpdateAux;
 		this.nextWorkset = nextWorkset;
 		
-		this.singleRoot = new SingleRootJoiner();
+		SingleRootJoiner singleRoot = new SingleRootJoiner();
 		this.solutionSetDeltaRootConnection = new DagConnection(solutionSetDeltaUpdateAux,
-													this.singleRoot, executionMode);
+													singleRoot, executionMode);
 
-		this.nextWorksetRootConnection = new DagConnection(nextWorkset, this.singleRoot, executionMode);
-		this.singleRoot.setInputs(this.solutionSetDeltaRootConnection, this.nextWorksetRootConnection);
+		this.nextWorksetRootConnection = new DagConnection(nextWorkset, singleRoot, executionMode);
+		singleRoot.setInputs(this.solutionSetDeltaRootConnection, this.nextWorksetRootConnection);
+		
+		// connect sinks to single root
+		OptimizerNode sinkRoot = null;
+		if (iterationSinks.size() > 0) {
+			Iterator<DataSinkNode> iter = iterationSinks.iterator();
+			sinkRoot = iter.next();
+
+			while (iter.hasNext()) {
+				sinkRoot = new SinkJoiner(sinkRoot, iter.next());
+			}
+		}
+		
+		if(sinkRoot != null) {
+			this.singleRoot = new SinkJoiner(sinkRoot, singleRoot);
+		}
+		else {
+			this.singleRoot = singleRoot;
+		}
 		
 		solutionSetDeltaUpdateAux.addOutgoingConnection(this.solutionSetDeltaRootConnection);
 		nextWorkset.addOutgoingConnection(this.nextWorksetRootConnection);
@@ -224,6 +246,10 @@ public class WorksetIterationNode extends TwoInputNode implements IterationNode 
 	@Override
 	public String getName() {
 		return "Workset Iteration";
+	}
+	
+	public void addIterationSink(DataSinkNode sink) {
+		this.iterationSinks.add(sink);
 	}
 
 	@Override
@@ -259,6 +285,11 @@ public class WorksetIterationNode extends TwoInputNode implements IterationNode 
 		// workset source of the step function. the second pass concerns only the workset path.
 		// as initial interesting properties, we have the trivial ones for the step function,
 		// and partitioned on the solution set key for the solution set delta 
+		
+		// interesting properties for iteration sinks
+		for(DataSinkNode sink : this.iterationSinks) {
+			sink.accept(new InterestingPropertyVisitor(estimator));
+		}
 		
 		RequestedGlobalProperties partitionedProperties = new RequestedGlobalProperties();
 		partitionedProperties.setHashPartitioned(this.solutionSetKeyFields);
@@ -426,39 +457,63 @@ public class WorksetIterationNode extends TwoInputNode implements IterationNode 
 		// take all combinations of solution set delta and workset plans
 		for (PlanNode solutionSetCandidate : solutionSetDeltaCandidates) {
 			for (PlanNode worksetCandidate : worksetCandidates) {
+				
 				// check whether they have the same operator at their latest branching point
 				if (this.singleRoot.areBranchCompatible(solutionSetCandidate, worksetCandidate)) {
 					
-					SingleInputPlanNode siSolutionDeltaCandidate = (SingleInputPlanNode) solutionSetCandidate;
-					boolean immediateDeltaUpdate;
-					
-					// check whether we need a dedicated solution set delta operator, or whether we can update on the fly
-					if (siSolutionDeltaCandidate.getInput().getShipStrategy() == ShipStrategyType.FORWARD &&
-							this.solutionDeltaImmediatelyAfterSolutionJoin)
-					{
-						// we do not need this extra node. we can make the predecessor the delta
-						// sanity check the node and connection
-						if (siSolutionDeltaCandidate.getDriverStrategy() != DriverStrategy.UNARY_NO_OP ||
-								siSolutionDeltaCandidate.getInput().getLocalStrategy() != LocalStrategy.NONE)
-						{
-							throw new CompilerException("Invalid Solution set delta node.");
+					// find compatible sink plans
+					List<SinkPlanNode> iterationSinksCompatible = new ArrayList<SinkPlanNode>();
+					for(DataSinkNode dsn : this.iterationSinks) {
+						List<PlanNode> iterationSinkCandidates = dsn.getAlternativePlans(estimator);
+						for (PlanNode iterationSinkCandidate : iterationSinkCandidates) {
+							if(singleRoot.areBranchCompatible(solutionSetCandidate, iterationSinkCandidate) && singleRoot.areBranchCompatible(worksetCandidate, iterationSinkCandidate) ) {
+								iterationSinksCompatible.add((SinkPlanNode) iterationSinkCandidate);
+							}
 						}
-						
-						solutionSetCandidate = siSolutionDeltaCandidate.getInput().getSource();
-						immediateDeltaUpdate = true;
-					} else {
-						// was not partitioned, we need to keep this node.
-						// mark that we materialize the input
-						siSolutionDeltaCandidate.getInput().setTempMode(TempMode.PIPELINE_BREAKER);
-						immediateDeltaUpdate = false;
 					}
 					
-					WorksetIterationPlanNode wsNode = new WorksetIterationPlanNode(this,
-							"WorksetIteration ("+this.getOperator().getName()+")", solutionSetIn,
-							worksetIn, sspn, wspn, worksetCandidate, solutionSetCandidate);
-					wsNode.setImmediateSolutionSetUpdate(immediateDeltaUpdate);
-					wsNode.initProperties(gp, lp);
-					target.add(wsNode);
+					// make sure we found a compatible solution
+					if(this.iterationSinks.size() == iterationSinksCompatible.size()) {
+					
+						SingleInputPlanNode siSolutionDeltaCandidate = (SingleInputPlanNode) solutionSetCandidate;
+						boolean immediateDeltaUpdate;
+						
+						// check whether we need a dedicated solution set delta operator, or whether we can update on the fly
+						if (siSolutionDeltaCandidate.getInput().getShipStrategy() == ShipStrategyType.FORWARD &&
+								this.solutionDeltaImmediatelyAfterSolutionJoin)
+						{
+							// we do not need this extra node. we can make the predecessor the delta
+							// sanity check the node and connection
+							if (siSolutionDeltaCandidate.getDriverStrategy() != DriverStrategy.UNARY_NO_OP ||
+									siSolutionDeltaCandidate.getInput().getLocalStrategy() != LocalStrategy.NONE)
+							{
+								throw new CompilerException("Invalid Solution set delta node.");
+							}
+							
+							solutionSetCandidate = siSolutionDeltaCandidate.getInput().getSource();
+							immediateDeltaUpdate = true;
+						} else {
+							// was not partitioned, we need to keep this node.
+							// mark that we materialize the input
+							siSolutionDeltaCandidate.getInput().setTempMode(TempMode.PIPELINE_BREAKER);
+							immediateDeltaUpdate = false;
+						}
+						
+						WorksetIterationPlanNode wsNode = null;
+						if(iterationSinksCompatible.size() == 0) {
+							wsNode = new WorksetIterationPlanNode(this,
+									"WorksetIteration ("+this.getOperator().getName()+")", solutionSetIn,
+									worksetIn, sspn, wspn, worksetCandidate, solutionSetCandidate);
+						}
+						else {
+							wsNode = new WorksetIterationPlanNode(this,
+									"WorksetIteration ("+this.getOperator().getName()+")", solutionSetIn,
+									worksetIn, sspn, wspn, worksetCandidate, solutionSetCandidate, iterationSinksCompatible);
+						}
+						wsNode.setImmediateSolutionSetUpdate(immediateDeltaUpdate);
+						wsNode.initProperties(gp, lp);
+						target.add(wsNode);
+					}
 				}
 			}
 		}

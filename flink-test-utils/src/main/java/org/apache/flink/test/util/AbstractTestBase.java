@@ -63,7 +63,6 @@ public abstract class AbstractTestBase extends TestBaseUtils {
 
 	public void stopCluster() throws Exception {
 		stopCluster(executor, timeout);
-
 		deleteAllTempFiles();
 	}
 

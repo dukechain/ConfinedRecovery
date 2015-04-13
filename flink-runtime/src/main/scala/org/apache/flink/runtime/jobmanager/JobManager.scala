@@ -547,24 +547,36 @@ class JobManager(val flinkConfiguration: Configuration,
         }
         
         this.iterationManagers = Nil
-        
-        for (vertex <- jobGraph.getVertices
-            if (vertex.getInvokableClassName
-            .equalsIgnoreCase("org.apache.flink.runtime.iterative.task.IterationHeadPactTask"))) {
-          val taskConfig = new TaskConfig(vertex.getConfiguration)
-          val manager = new IterationManager(jobGraph.getJobID, taskConfig.getIterationId, 
-              vertex.getParallelism, taskConfig.getNumberOfIterations, accumulatorManager, 
-              self)
-          if (taskConfig.usesConvergenceCriterion()) {
-            val convergenceCriterion = taskConfig.getConvergenceCriterion(userCodeLoader)
-              .asInstanceOf[ConvergenceCriterion[Object]]
-            val convergenceAggregatorName = taskConfig.getConvergenceCriterionAccumulatorName()
-            Preconditions.checkNotNull(convergenceCriterion)
-            Preconditions.checkNotNull(convergenceAggregatorName)
-            manager.setConvergenceCriterion(convergenceAggregatorName, convergenceCriterion)
+        var tailMap:Map[Int,Int] = Map() // used to count number of tails per iteration
+        for (vertex <- jobGraph.getVertices) {
+          if (vertex.getInvokableClassName
+            .equalsIgnoreCase("org.apache.flink.runtime.iterative.task.IterationHeadPactTask")) {
+            val taskConfig = new TaskConfig(vertex.getConfiguration)
+            val manager = new IterationManager(jobGraph.getJobID, taskConfig.getIterationId, 
+                vertex.getParallelism, taskConfig.getNumberOfIterations, accumulatorManager, 
+                self)
+            if (taskConfig.usesConvergenceCriterion()) {
+              val convergenceCriterion = taskConfig.getConvergenceCriterion(userCodeLoader)
+                .asInstanceOf[ConvergenceCriterion[Object]]
+              val convergenceAggregatorName = taskConfig.getConvergenceCriterionAccumulatorName()
+              Preconditions.checkNotNull(convergenceCriterion)
+              Preconditions.checkNotNull(convergenceAggregatorName)
+              manager.setConvergenceCriterion(convergenceAggregatorName, convergenceCriterion)
+            }
+            iterationManagers = manager :: iterationManagers;
           }
-          iterationManagers = manager :: iterationManagers;
+          else if (vertex.getInvokableClassName
+            .equalsIgnoreCase("org.apache.flink.runtime.iterative.task.IterationSinkPactTask")) {
+            val taskConfig = new TaskConfig(vertex.getConfiguration)
+            if(tailMap.keySet.exists(_ == taskConfig.getIterationId)) {
+               tailMap += ((taskConfig.getIterationId, tailMap(taskConfig.getIterationId) + 1));
+            }
+            else {
+              tailMap += ((taskConfig.getIterationId, 1));
+            }
+          }
         }
+        tailMap foreach ( (tail) => getIterationManager(jobGraph.getJobID, tail._1).setNumberOfTails(tail._2 + 1));
 
         // give an actorContext
         executionGraph.setParentContext(context);

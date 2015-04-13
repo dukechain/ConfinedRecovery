@@ -236,7 +236,7 @@ public class DataSinkTask<IT> extends AbstractInvokable {
 			}
 		}
 		finally {
-			if (this.format != null && !keepFormatOpen) {
+			if (this.format != null) {
 				// close format, if it has not been closed, yet.
 				// This should only be the case if we had a previous error, or were canceled.
 				try {

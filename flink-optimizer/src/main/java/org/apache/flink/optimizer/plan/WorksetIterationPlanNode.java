@@ -21,7 +21,9 @@ package org.apache.flink.optimizer.plan;
 import static org.apache.flink.optimizer.plan.PlanNode.SourceAndDamReport.FOUND_SOURCE;
 import static org.apache.flink.optimizer.plan.PlanNode.SourceAndDamReport.FOUND_SOURCE_AND_DAM;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.apache.flink.api.common.operators.util.FieldList;
@@ -59,6 +61,8 @@ public class WorksetIterationPlanNode extends DualInputPlanNode implements Itera
 	
 	private TypeSerializerFactory<?> serializerForIterationChannel;
 	
+	private List<SinkPlanNode> iterationSinks = new ArrayList<SinkPlanNode>();
+	
 	// --------------------------------------------------------------------------------------------
 
 	public WorksetIterationPlanNode(WorksetIterationNode template, String nodeName, Channel initialSolutionSet, Channel initialWorkset,
@@ -74,6 +78,15 @@ public class WorksetIterationPlanNode extends DualInputPlanNode implements Itera
 		mergeBranchPlanMaps();
 
 	}
+	
+	public WorksetIterationPlanNode(WorksetIterationNode template, String nodeName, Channel initialSolutionSet, Channel initialWorkset,
+			SolutionSetPlanNode solutionSetPlanNode, WorksetPlanNode worksetPlanNode,
+			PlanNode nextWorkSetPlanNode, PlanNode solutionSetDeltaPlanNode, List<SinkPlanNode> rootOfSinks)
+	{
+		this(template, nodeName, initialSolutionSet, initialWorkset, solutionSetPlanNode, worksetPlanNode, nextWorkSetPlanNode, solutionSetDeltaPlanNode);
+		this.iterationSinks.addAll(rootOfSinks);
+	}
+
 
 	// --------------------------------------------------------------------------------------------
 	
@@ -119,6 +132,10 @@ public class WorksetIterationPlanNode extends DualInputPlanNode implements Itera
 	
 	public FieldList getSolutionSetKeyFields() {
 		return getIterationNode().getSolutionSetKeyFields();
+	}
+	
+	public List<SinkPlanNode> getIterationSinks() {
+		return this.iterationSinks;
 	}
 	
 	// --------------------------------------------------------------------------------------------
@@ -193,6 +210,12 @@ public class WorksetIterationPlanNode extends DualInputPlanNode implements Itera
 	public void acceptForStepFunction(Visitor<PlanNode> visitor) {
 		this.solutionSetDeltaPlanNode.accept(visitor);
 		this.nextWorkSetPlanNode.accept(visitor);
+		
+		// circumvent plan finalizer
+		for(SinkPlanNode sink: this.iterationSinks) {
+			sink.setInsideIteration(true);
+			sink.accept(visitor);
+		}
 	}
 
 	/**

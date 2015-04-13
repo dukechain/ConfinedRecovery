@@ -254,6 +254,20 @@ public class OperatorTranslation {
 		
 		iterationOperator.setSolutionSetUnManaged(iterationHead.isSolutionSetUnManaged());
 		
+		ArrayList<DataSink<?>> sinks = this.iterationSinks.get(iterationHead.getSolutionSet());
+		ArrayList<DataSink<?>> sinksTmp = this.iterationSinks.get(iterationHead.getWorkset());
+		if(sinks != null && sinksTmp != null) {
+			sinks.addAll(sinksTmp);
+		}
+		if(sinks == null && sinksTmp != null) {
+			sinks = sinksTmp;
+		}
+		if(sinks != null) {
+			for(DataSink<?> s : sinks) {
+				iterationOperator.addIterationSink(translate(s));
+			}
+		}
+		
 		return iterationOperator;
 	}
 	

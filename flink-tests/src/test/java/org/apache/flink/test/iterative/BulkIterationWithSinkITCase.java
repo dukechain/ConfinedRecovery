@@ -18,6 +18,7 @@
 
 package org.apache.flink.test.iterative;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -46,6 +47,7 @@ public class BulkIterationWithSinkITCase extends JavaProgramTestBase {
 	private String result1 = "1\n2\n3\n4\n5\n6\n7\n8";
 	private String result6 = "6\n7\n8\n9\n10\n11\n12\n13";
 	private String result10= "10\n11\n12\n13\n14\n15\n16\n17";
+	private String result100= "110\n111\n112\n113\n114\n115\n116\n117";
 	
 	protected boolean skipCollectionExecution() {
 		return true;
@@ -54,15 +56,15 @@ public class BulkIterationWithSinkITCase extends JavaProgramTestBase {
 	@Override
 	protected void preSubmit() throws Exception {
 		resultPath = getTempFilePath("results");
-		resultPath2 = getTempFilePath("results");
-		resultPath3 = getTempFilePath("results");
+		resultPath2 = getTempFilePath("results2")+"/collect"; // take sub folder for correct clean up
+		resultPath3 = getTempFilePath("results3");
 	}
 	
 	@Override
 	protected void testProgram() throws Exception {
 		
 		ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
-		env.setParallelism(2);
+		env.setParallelism(1);
 		
 		DataSet<Tuple1<Integer>> data = env.fromElements(1, 2, 3, 4, 5, 6, 7, 8).map(new MapFunction<Integer, Tuple1<Integer>>() {
 
@@ -76,6 +78,7 @@ public class BulkIterationWithSinkITCase extends JavaProgramTestBase {
 		IterativeDataSet<Tuple1<Integer>> iteration = data.iterate(10);
 		
 		iteration.writeAsCsv(resultPath); // by standard iteration write mode is set to OVERWRITE
+		iteration.map(new AddHundredMapper()).writeAsCsv(resultPath3);
 		
 		FileOutputFormat<Tuple1<Integer>> outputFormat = new CsvOutputFormat<Tuple1<Integer>>(new Path(resultPath2), CsvOutputFormat.DEFAULT_LINE_DELIMITER, CsvOutputFormat.DEFAULT_FIELD_DELIMITER);
 		outputFormat.setIterationWriteMode(IterationWriteMode.KEEP_ALL);
@@ -97,14 +100,23 @@ public class BulkIterationWithSinkITCase extends JavaProgramTestBase {
 		compareResultsByLinesInMemory(result10, resultPath2+"_10");
 		compareResultsByLinesInMemory(result6, resultPath2+"_6");
 		compareResultsByLinesInMemory(result1, resultPath2+"_1");
+		compareResultsByLinesInMemory(result100, resultPath3);
 	}
 
-	
 	public static class AddOneMapper implements MapFunction<Tuple1<Integer>, Tuple1<Integer>> {
 		
 		@Override
 		public Tuple1<Integer> map(Tuple1<Integer> record) {
 			record.f0 ++;
+			return record;
+		}
+	}
+	
+	public static class AddHundredMapper implements MapFunction<Tuple1<Integer>, Tuple1<Integer>> {
+		
+		@Override
+		public Tuple1<Integer> map(Tuple1<Integer> record) {
+			record.f0 += 100;
 			return record;
 		}
 	}

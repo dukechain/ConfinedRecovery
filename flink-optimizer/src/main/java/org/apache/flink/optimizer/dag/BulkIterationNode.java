@@ -423,24 +423,27 @@ public class BulkIterationNode extends SingleInputNode implements IterationNode 
 					}
 				}
 				
-				for (PlanNode terminationCandidate : terminationCriterionCandidates) {
-					if (singleRoot.areBranchCompatible(candidate, terminationCandidate)) {
-						BulkIterationPlanNode node ;
-						if(iterationSinksCompatible.size() == 0) {
-							node = new BulkIterationPlanNode(this, "BulkIteration ("+this.getOperator().getName()+")", in, pspn, candidate, terminationCandidate);
+				// make sure we found a compatible solution
+				if(this.iterationSinks.size() == iterationSinksCompatible.size()) {
+				
+					for (PlanNode terminationCandidate : terminationCriterionCandidates) {
+						if (singleRoot.areBranchCompatible(candidate, terminationCandidate)) {
+							BulkIterationPlanNode node ;
+							if(iterationSinksCompatible.size() == 0) {
+								node = new BulkIterationPlanNode(this, "BulkIteration ("+this.getOperator().getName()+")", in, pspn, candidate, terminationCandidate);
+							}
+							else {
+								node = new BulkIterationPlanNode(this, "BulkIteration ("+this.getOperator().getName()+")", in, pspn, candidate, terminationCandidate, iterationSinksCompatible);
+							}
+							GlobalProperties gProps = candidate.getGlobalProperties().clone();
+							LocalProperties lProps = candidate.getLocalProperties().clone();
+							node.initProperties(gProps, lProps);
+							target.add(node);
+							
 						}
-						else {
-							node = new BulkIterationPlanNode(this, "BulkIteration ("+this.getOperator().getName()+")", in, pspn, candidate, terminationCandidate, iterationSinksCompatible);
-						}
-						GlobalProperties gProps = candidate.getGlobalProperties().clone();
-						LocalProperties lProps = candidate.getLocalProperties().clone();
-						node.initProperties(gProps, lProps);
-						target.add(node);
-						
 					}
-				}
+				}	
 			}
-			
 		}
 	}
 	

@@ -1330,6 +1330,12 @@ public class JobGraphGenerator implements Visitor<PlanNode> {
 				throw new CompilerException("Cannot create workset iteration with unspecified maximum number of iterations.");
 			}
 			headConfig.setNumberOfIterations(maxNumIterations);
+			
+			// create tails for iteration sinks
+			for(SinkPlanNode sink : iterNode.getIterationSinks()) {
+				AbstractJobVertex rootOfSinkVertex = (AbstractJobVertex) this.vertices.get(sink);
+				rootOfSinkVertex.setInvokableClass(IterationSinkPactTask.class);
+			}
 		
 		}
 		
