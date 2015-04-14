@@ -71,7 +71,7 @@ public class SingleSourceShortestPathsExample implements ProgramDescription {
 		} else {
 			singleSourceShortestPaths.print();
 		}
-
+		
 		env.execute("Single Source Shortest Paths Example");
 	}
 

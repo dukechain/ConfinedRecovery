@@ -112,6 +112,11 @@ public final class ConfigConstants {
 	 * The config parameter defining the directories for temporary files.
 	 */
 	public static final String TASK_MANAGER_TMP_DIR_KEY = "taskmanager.tmp.dirs";
+	
+	/**
+	 * The config parameter defining the directories for checkpointing files.
+	 */
+	public static final String TASK_MANAGER_CHECKPT_DIR_KEY = "taskmanager.checkpoint.dir";
 
 	/**
 	 * The config parameter defining the amount of memory to be allocated by the task manager's
@@ -519,7 +524,7 @@ public final class ConfigConstants {
 	/**
 	 * The default behavior with respect to overwriting existing files (= not overwrite)
 	 */
-	public static final boolean DEFAULT_FILESYSTEM_OVERWRITE = false;
+	public static final boolean DEFAULT_FILESYSTEM_OVERWRITE = true;
 
 	/**
 	 * The default behavior for output directory creating (create only directory when parallelism > 1).

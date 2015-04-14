@@ -20,6 +20,7 @@ package org.apache.flink.runtime.executiongraph;
 
 import akka.actor.ActorContext;
 import akka.actor.ActorRef;
+
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.akka.AkkaUtils;
@@ -33,6 +34,7 @@ import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.ScheduleMode;
 import org.apache.flink.runtime.jobmanager.StreamCheckpointCoordinator;
+import org.apache.flink.runtime.jobmanager.iterations.IterationManager;
 import org.apache.flink.runtime.jobmanager.scheduler.Scheduler;
 import org.apache.flink.runtime.messages.ExecutionGraphMessages;
 import org.apache.flink.runtime.state.StateHandle;
@@ -40,6 +42,7 @@ import org.apache.flink.runtime.taskmanager.TaskExecutionState;
 import org.apache.flink.util.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import scala.Tuple3;
 import scala.concurrent.duration.Duration;
 import scala.concurrent.duration.FiniteDuration;
@@ -139,6 +142,8 @@ public class ExecutionGraph implements Serializable {
 
 	/** The timeout for all messages that require a response/acknowledgement */
 	private final FiniteDuration timeout;
+	
+	private List<IterationManager> iterationManagers = new ArrayList<IterationManager>();
 
 
 	// ------ Configuration of the Execution -------
@@ -572,25 +577,8 @@ public class ExecutionGraph implements Serializable {
 							break;
 						}
 						if (current == JobStatus.FAILING) {
-							if (numberOfRetriesLeft > 0 && transitionState(current, JobStatus.RESTARTING)) {
-								numberOfRetriesLeft--;
-								future(new Callable<Object>() {
-									@Override
-									public Object call() throws Exception {
-										try{
-											Thread.sleep(delayBeforeRetrying);
-										}catch(InterruptedException e){
-											// should only happen on shutdown
-										}
-										restart();
-										return null;
-									}
-								}, AkkaUtils.globalExecutionContext());
-								break;
-							}
-							else if (numberOfRetriesLeft <= 0 && transitionState(current, JobStatus.FAILED, failureCause)) {
-								break;
-							}
+							handleRecovery();
+							break;
 						}
 						if (current == JobStatus.CANCELED || current == JobStatus.CREATED || current == JobStatus.FINISHED) {
 							fail(new Exception("ExecutionGraph went into final state from state " + current));
@@ -769,6 +757,38 @@ public class ExecutionGraph implements Serializable {
 	}
 	
 	/**
+	 * Makes a hard restart of this execution graph
+	 * Cancels all vertices and schedules new ones
+	 * 
+	 * @param topologiallySorted
+	 * @throws JobException
+	 */
+	public void restartHard(List<AbstractJobVertex> topologiallySorted) throws JobException {
+		
+		// set state to restarting and cancel all vertices
+		if(transitionState(this.state, JobStatus.RESTARTING)) {
+			for (ExecutionJobVertex ejv : verticesInCreationOrder) {
+				ejv.cancel();
+			}
+		}
+		
+		// clear internal lists
+		this.tasks.clear();
+		this.intermediateResults.clear();
+		this.verticesInCreationOrder.clear();
+		this.currentExecutions.clear();
+		
+		// attach new job graph
+		this.attachJobGraph(topologiallySorted);
+		
+		// reset state
+		transitionState(JobStatus.RESTARTING, JobStatus.CREATED);
+		
+		// schedule
+		scheduleForExecution(scheduler);
+	}
+	
+	/**
 	 * This method cleans fields that are irrelevant for the archived execution attempt.
 	 */
 	public void prepareForArchiving() {
@@ -791,5 +811,44 @@ public class ExecutionGraph implements Serializable {
 		scheduler = null;
 		parentContext = null;
 		stateCheckpointerActor = null;
+	}
+	
+	/**
+	 * This method is used for recovery handling in case 
+	 * something goes wrong during execution
+	 */
+	public void handleRecovery() {
+		
+		// if there is a running iteration initiate recovery there
+		for(IterationManager manager : iterationManagers) {
+			if(manager.running.get() == true) {
+				manager.initRecovery();
+				return;
+			}
+		}
+		
+		// if not retry the current graph as long as retries are left
+		if (numberOfRetriesLeft > 0 && transitionState(state, JobStatus.RESTARTING)) {
+			numberOfRetriesLeft--;
+			future(new Callable<Object>() {
+				@Override
+				public Object call() throws Exception {
+					try{
+						Thread.sleep(delayBeforeRetrying);
+					}catch(InterruptedException e){
+						// should only happen on shutdown
+					}
+					restart();
+					return null;
+				}
+			}, AkkaUtils.globalExecutionContext());
+		}
+		else {
+			transitionState(state, JobStatus.FAILED, failureCause);
+		}
+	}
+	
+	public void addIterationManager(IterationManager manager) {
+		this.iterationManagers.add(manager);
 	}
 }

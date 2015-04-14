@@ -63,7 +63,7 @@ public class JobGraph implements Serializable {
 	private final List<BlobKey> userJarBlobKeys = new ArrayList<BlobKey>();
 	
 	/** ID of this job. */
-	private final JobID jobID;
+	private JobID jobID;
 
 	/** Name of this job. */
 	private String jobName;
@@ -156,6 +156,10 @@ public class JobGraph implements Serializable {
 	 */
 	public JobID getJobID() {
 		return this.jobID;
+	}
+	
+	public void setJobID(JobID id) {
+		this.jobID = id;
 	}
 	
 	/**

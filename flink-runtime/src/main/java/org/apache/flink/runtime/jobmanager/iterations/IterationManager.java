@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.jobmanager.iterations;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -25,16 +26,41 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.flink.api.common.ExecutionConfig;
+import org.apache.flink.api.common.InvalidProgramException;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.accumulators.Accumulator;
 import org.apache.flink.api.common.accumulators.ConvergenceCriterion;
+import org.apache.flink.api.common.io.FileInputFormat;
+import org.apache.flink.api.common.io.InputFormat;
+import org.apache.flink.api.common.operators.util.UserCodeObjectWrapper;
+import org.apache.flink.api.common.operators.util.UserCodeWrapper;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.common.typeutils.TypeSerializerFactory;
+import org.apache.flink.api.java.io.CsvInputFormat;
+import org.apache.flink.configuration.ConfigConstants;
+import org.apache.flink.configuration.GlobalConfiguration;
+import org.apache.flink.core.fs.Path;
+import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.accumulators.AccumulatorEvent;
+import org.apache.flink.runtime.client.JobExecutionException;
+import org.apache.flink.runtime.execution.librarycache.LibraryCacheManager;
+import org.apache.flink.runtime.iterative.task.AbstractIterativePactTask;
+import org.apache.flink.runtime.jobgraph.AbstractJobVertex;
+import org.apache.flink.runtime.jobgraph.InputFormatVertex;
+import org.apache.flink.runtime.jobgraph.JobGraph;
+import org.apache.flink.runtime.jobmanager.JobManager;
 import org.apache.flink.runtime.jobmanager.accumulators.AccumulatorManager;
 import org.apache.flink.runtime.messages.JobManagerMessages;
+import org.apache.flink.runtime.operators.DataSourceTask;
+import org.apache.flink.runtime.operators.shipping.ShipStrategyType;
+import org.apache.flink.runtime.operators.util.TaskConfig;
 import org.apache.flink.util.InstantiationUtil;
+import org.apache.flink.util.RecoveryUtil;
 
 import akka.actor.ActorRef;
 
@@ -75,12 +101,27 @@ public class IterationManager {
 	
 	private Set<String> iterationAccumulators;
 	
-	private final ActorRef jobManager;
+	private final ActorRef jobManagerRef;
+	
+	private final JobManager jobManager;
 	 
 	private CopyOnWriteArrayList<ActorRef> workers = new CopyOnWriteArrayList<ActorRef>();
 	
+	private JobGraph jobGraph;
+	
+	private LibraryCacheManager libraryCacheManager;
+	
+	public AtomicBoolean running = new AtomicBoolean(false);
+	
+	private AtomicBoolean initRerun = new AtomicBoolean(false);
+	
+	private int lastCheckpoint = 6;
+	
+	private int nextCheckpoint;
+	
 	public IterationManager(JobID jobId, int iterationId, int parallelism, int maxNumberOfIterations, 
-			AccumulatorManager accumulatorManager, ActorRef jobManager) throws IOException {
+			AccumulatorManager accumulatorManager, ActorRef jobManagerRef, JobManager jobManager,
+			JobGraph jobGraph, LibraryCacheManager libraryCacheManager) throws IOException {
 		Preconditions.checkArgument(parallelism > 0);
 		this.jobId = jobId;
 		this.iterationId = iterationId;
@@ -90,13 +131,16 @@ public class IterationManager {
 		this.maxNumberOfIterations = maxNumberOfIterations;
 		this.accumulatorManager = accumulatorManager;
 		this.iterationAccumulators = new HashSet<String>();
+		this.jobManagerRef =  jobManagerRef;
 		this.jobManager = jobManager;
+		this.jobGraph = jobGraph;
+		this.libraryCacheManager = libraryCacheManager;
 	}
 	
 	/**
 	 * Is called once the JobManager receives a WorkerDoneEvent by RPC call from one node
 	 */
-	public synchronized void receiveWorkerDoneEvent(Map<String, Accumulator<?, ?>> accumulators, ActorRef sender) {
+	public synchronized void receiveWorkerDoneEvent(Map<String, Accumulator<?, ?>> accumulators, ActorRef sender, boolean checkpoint) {
 		
 		// sanity check
 		if (this.endOfSuperstep) {
@@ -104,6 +148,8 @@ public class IterationManager {
 		}
 		
 		workerDoneEventCounter++;
+		
+		this.running.set(true);
 		
 		// process accumulators
 		this.accumulatorManager.processIncomingAccumulators(jobId, accumulators);
@@ -116,6 +162,12 @@ public class IterationManager {
 		// add all senders
 		if(this.workers.size() < numberOfEventsUntilEndOfSuperstep) {
 			this.workers.add(sender);
+		}
+		
+		// set checkpoints
+		if(checkpoint && nextCheckpoint != currentIteration) {
+			lastCheckpoint = nextCheckpoint;
+			nextCheckpoint = currentIteration;
 		}
 		
 		// if all workers have sent their WorkerDoneEvent -> end of superstep
@@ -142,11 +194,16 @@ public class IterationManager {
 			
 			// Send termination to all workers
 			for(ActorRef worker : this.workers) {
-				worker.tell(new JobManagerMessages.InitIterationTermination(), this.jobManager);
+				worker.tell(new JobManagerMessages.InitIterationTermination(), this.jobManagerRef);
 			}
+			
+			//this.timeout = null;
+			this.running.set(false);
 
 		} else {
 
+			System.out.println("SIGNAL NEXT");
+			
 			if (log.isInfoEnabled()) {
 				log.info("signaling that all workers are done in iteration [" + currentIteration+ "]");
 			}
@@ -171,7 +228,7 @@ public class IterationManager {
 			
 			// initiate next iteration for all workers
 			for(ActorRef worker : this.workers) {
-				worker.tell(new JobManagerMessages.InitNextIteration(copiedEvent), this.jobManager);
+				worker.tell(new JobManagerMessages.InitNextIteration(copiedEvent), this.jobManagerRef);
 			}
 			
 			currentIteration++;
@@ -199,6 +256,8 @@ public class IterationManager {
 	 * Checks if either we have reached maxNumberOfIterations or if a associated ConvergenceCriterion is converged
 	 */
 	private boolean checkForConvergence() {
+		
+		System.out.println(currentIteration+ " / "+maxNumberOfIterations);
 		
 		if (maxNumberOfIterations == currentIteration) {
 			if (log.isInfoEnabled()) {
@@ -276,5 +335,144 @@ public class IterationManager {
 		}
 		
 		return managedAccumulators;
+	}
+	
+	/**
+	 * This method initiates the recovery process of the iteration
+	 * It cancels all remaining tasks in the plan and starts a new execution
+	 * from the last checkpoint
+	 */
+	public void initRecovery() {
+		if(initRerun.compareAndSet(false, true)) {	
+
+			// find iteration vertex
+			AbstractJobVertex iterationVertex = null;
+			for(AbstractJobVertex vertex : jobGraph.getVertices()) {
+				if(vertex.getInvokableClassName()
+						.equalsIgnoreCase("org.apache.flink.runtime.iterative.task.IterationHeadPactTask")) {
+					
+					TaskConfig taskConfig = new TaskConfig(vertex.getConfiguration());
+					// found right iteration head
+					if(taskConfig.getIterationId() == this.iterationId) {
+						iterationVertex = vertex;
+					}
+				}
+			}
+			
+			// here to avoid concurrent modification exception
+			TaskConfig iterationTaskConfig = new TaskConfig(iterationVertex.getConfiguration());
+			
+			String checkpointPath = RecoveryUtil.getCheckpointPath()+"test"; //+iterationVertex.getName().trim();
+
+			InputFormatVertex checkpoint;
+			try {
+				// create new checkpoint source to attach in front of the iteration
+				checkpoint = createCheckpointInput(jobGraph, "file:/c:/temp/checkpoint_"+lastCheckpoint, this.parallelism, 
+						iterationTaskConfig.getOutputSerializer(this.libraryCacheManager.getClassLoader(jobId)),
+						iterationTaskConfig.getOutputType(1, this.libraryCacheManager.getClassLoader(jobId)));
+				
+				
+					if(checkpoint.getParallelism() == ExecutionConfig.PARALLELISM_AUTO_MAX) {
+						checkpoint.setParallelism(jobManager.scheduler().getTotalNumberOfSlots());
+					}
+					else {
+						checkpoint.setParallelism(this.parallelism);
+					}
+		        	
+					try {
+						checkpoint.initializeOnMaster(libraryCacheManager.getClassLoader(jobId));
+						}
+					catch(Throwable t) {
+						throw new RuntimeException(
+								"Cannot initialize checkpoint task : " + t.getMessage(), t);
+						}
+				
+				
+				jobGraph.addVertex(checkpoint);
+				
+				iterationVertex.connectNewDataSetAsInput(checkpoint, iterationVertex.getInputs().get(0).getDistributionPattern());
+				iterationTaskConfig.setNumberOfIterations(maxNumberOfIterations - currentIteration);		
+				
+				// generate new job id
+				jobGraph.setJobID(JobID.generate());
+
+				
+				// adjust parallelism
+				for(AbstractJobVertex v : jobGraph.getVertices()) {
+					
+					// dont change all reduces
+					if(v.getParallelism() == this.parallelism && this.parallelism > 1) {
+						v.setParallelism(v.getParallelism() - 1);
+					}
+					
+					if(v.getCoLocationGroup() != null) {
+						v.getCoLocationGroup().resetConstraints();
+					}
+					
+					if(v.getClass().isAssignableFrom(AbstractIterativePactTask.class)) {
+						iterationTaskConfig.setStartIteration(lastCheckpoint);
+					}
+					
+				}
+				
+				// adjust state of this iteration manager
+				this.parallelism--;
+				this.numberOfEventsUntilEndOfSuperstep = this.numberOfTails * this.parallelism;
+				this.workers.clear();
+				
+				System.out.println("submit");
+				
+				try {
+					jobManager.currentJobs().get(jobId).get()._1.restartHard(jobGraph.getVerticesSortedTopologicallyFromSources());
+				} catch (InvalidProgramException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (JobException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+				
+				//jobManager.submitJob(jobGraph, false);
+				
+			} catch (ClassNotFoundException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+	}
+	
+	private static <X> InputFormatVertex createCheckpointInput(JobGraph jobGraph, String checkpointPath, 
+			int numSubTasks, TypeSerializerFactory<?> serializer, TypeInformation<X> typeInfo ) {
+		
+		CsvInputFormat<X> pointsInFormat = new CsvInputFormat<X>(new Path(checkpointPath), typeInfo);
+		InputFormatVertex pointsInput = createInput(pointsInFormat, checkpointPath, "[CHECKPOINT]", jobGraph, numSubTasks);
+		{
+			TaskConfig taskConfig = new TaskConfig(pointsInput.getConfiguration());
+			taskConfig.addOutputShipStrategy(ShipStrategyType.FORWARD);
+			taskConfig.setOutputSerializer(serializer);
+		}
+		return pointsInput;
+	}
+	
+	// from jobgraphutil
+	public static <T extends FileInputFormat<?>> InputFormatVertex createInput(T stub, String path, String name, JobGraph graph,
+			int parallelism)
+	{
+		stub.setFilePath(path);
+		return createInput(new UserCodeObjectWrapper<T>(stub), name, graph, parallelism);
+	}
+
+	private static <T extends InputFormat<?,?>> InputFormatVertex createInput(UserCodeWrapper<T> stub, String name, JobGraph graph,
+			int parallelism)
+	{
+		InputFormatVertex inputVertex = new InputFormatVertex(name);
+		
+		inputVertex.setInvokableClass(DataSourceTask.class);
+		inputVertex.setParallelism(parallelism);
+
+		TaskConfig inputConfig = new TaskConfig(inputVertex.getConfiguration());
+		inputConfig.setStubWrapper(stub);
+		
+		return inputVertex;
 	}
 }

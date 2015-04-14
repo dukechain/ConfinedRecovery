@@ -925,6 +925,8 @@ public class JobGraphGenerator implements Visitor<PlanNode> {
 			toReturn = headVertex;
 		}
 		
+		headConfig.setOutputType(pspn.getOptimizerNode().getOperator().getOperatorInfo().getOutputType(), 1);
+		
 		// create the iteration descriptor and the iteration to it
 		IterationDescriptor descr = this.iterations.get(iteration);
 		if (descr == null) {

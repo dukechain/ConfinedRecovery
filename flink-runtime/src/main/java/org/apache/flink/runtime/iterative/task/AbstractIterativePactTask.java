@@ -114,6 +114,11 @@ public abstract class AbstractIterativePactTask<S extends Function, OT> extends 
 				}
 			}
 		}
+		
+		// used for start from checkpoint during recovery
+		if(this.config.getStartIteration() > 0) {
+			this.superstepNum = this.config.getStartIteration();
+		}
 	}
 
 	@Override

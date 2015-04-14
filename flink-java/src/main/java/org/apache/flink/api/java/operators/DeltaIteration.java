@@ -22,11 +22,9 @@ import java.util.Arrays;
 
 import org.apache.commons.lang3.Validate;
 import org.apache.flink.api.common.InvalidProgramException;
-import org.apache.flink.api.common.io.OutputFormat;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.ExecutionEnvironment;
-import org.apache.flink.api.java.typeutils.InputTypeConfigurable;
 
 /**
  * The DeltaIteration represents the start of a delta iteration. It is created from the DataSet that

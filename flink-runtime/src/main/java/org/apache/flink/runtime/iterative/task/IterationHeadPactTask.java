@@ -375,7 +375,8 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 				JobManagerMessages.ReportIterationWorkerDone workerDoneEvent = new JobManagerMessages.ReportIterationWorkerDone(
 						taskConfig.getIterationId(),
 						new AccumulatorEvent(getEnvironment().getJobID(),
-								getIterationAccumulators().getAllAccumulators()));
+								getIterationAccumulators().getAllAccumulators()),
+								false);
 				
 				final Future<Object> response = Patterns.ask(env.getJobManager(),
 						workerDoneEvent, 3600000); // 1 hour

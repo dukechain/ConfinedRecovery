@@ -33,6 +33,7 @@ import org.apache.flink.api.common.distributions.DataDistribution;
 import org.apache.flink.api.common.functions.Function;
 import org.apache.flink.api.common.functions.Partitioner;
 import org.apache.flink.api.common.operators.util.UserCodeWrapper;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeutils.TypeComparatorFactory;
 import org.apache.flink.api.common.typeutils.TypePairComparatorFactory;
 import org.apache.flink.api.common.typeutils.TypeSerializerFactory;
@@ -138,6 +139,8 @@ public class TaskConfig implements Serializable {
 	
 	private static final String OUTPUT_PARTITIONER = "out.partitioner.";
 	
+	private static final String OUTPUT_TYPE = "out.type.";
+	
 	// ------------------------------------- Chaining ---------------------------------------------
 	
 	private static final String CHAINING_NUM_STUBS = "chaining.num";
@@ -165,6 +168,8 @@ public class TaskConfig implements Serializable {
 	// ----------------------------------- Iterations ---------------------------------------------
 	
 	private static final String NUMBER_OF_ITERATIONS = "iterative.num-iterations";
+	
+	private static final String START_ITERATION = "iterative.start-iteration";
 	
 	private static final String NUMBER_OF_EOS_EVENTS_PREFIX = "iterative.num-eos-events.";
 	
@@ -607,6 +612,27 @@ public class TaskConfig implements Serializable {
 		}
 	}
 	
+	public void setOutputType(TypeInformation<?> typeInformation, int outputNum) {
+		try {
+			InstantiationUtil.writeObjectToConfig(typeInformation, config, OUTPUT_TYPE + outputNum);
+		}
+		catch (Throwable t) {
+			throw new RuntimeException("Could not serialize custom partitioner.", t);
+		}
+	}
+	
+	public TypeInformation<?> getOutputType(int outputNum, final ClassLoader cl) throws ClassNotFoundException {
+		try {
+			return (TypeInformation<?>) InstantiationUtil.readObjectFromConfig(config, OUTPUT_TYPE + outputNum, cl);
+		}
+		catch (ClassNotFoundException e) {
+			throw e;
+		}
+		catch (Throwable t) {
+			throw new RuntimeException("Could not deserialize custom partitioner.", t);
+		}
+	}
+	
 	// --------------------------------------------------------------------------------------------
 	//                       Parameters to configure the memory and I/O behavior
 	// --------------------------------------------------------------------------------------------
@@ -734,6 +760,18 @@ public class TaskConfig implements Serializable {
 			throw new IllegalArgumentException();
 		}
 		return numberOfIterations;
+	}
+	
+	public void setStartIteration(int startIteration) {
+		this.config.setInteger(START_ITERATION, startIteration);
+	}
+	
+	public int getStartIteration() {
+		int startIteration = this.config.getInteger(START_ITERATION, 1);
+		if (startIteration <= 0) {
+			throw new IllegalArgumentException();
+		}
+		return startIteration;
 	}
 	
 	public void setIterationHeadPartialSolutionOrWorksetInputIndex(int inputIndex) {

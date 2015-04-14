@@ -20,6 +20,7 @@ package org.apache.flink.api.common.io;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.Serializable;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,13 +59,34 @@ public abstract class FileOutputFormat<IT> implements OutputFormat<IT>, Initiali
 	/**
 	 * Behavior when inside of an iteration
 	 */
-	public static enum IterationWriteMode {
+	public static class IterationWriteMode implements Serializable {
+
+		private static final long serialVersionUID = 5836546751798886716L;
+
+		private int writeInterval;
+	    
+		private int writeWindow;
+
+		/**
+		 * keeps a sliding window of writeWindow files
+	     * writes a file every writeInterval iterations
+	     * 
+		 * @param writeWindow
+		 * @param writeInterval
+		 */
+		public IterationWriteMode(int writeWindow, int writeInterval) {
+	    	
+			this.writeInterval = writeInterval;
+			this.writeWindow = writeWindow;
+		}
+	    
+		public int getWriteInterval() {
+			return this.writeInterval;
+		}
 		
-		/** Only the result of the latest iteration is written and kept */
-		OVERWRITE,	
-		
-		/** Every iteration writes out its own file, appending the current superstep number */
-		KEEP_ALL
+		public int getWriteWindow() {
+			return this.writeWindow;
+		}
 	}
 	
 	// --------------------------------------------------------------------------------------------
@@ -122,7 +144,7 @@ public abstract class FileOutputFormat<IT> implements OutputFormat<IT>, Initiali
 	/**
 	 * The iteration write mode
 	 */
-	private IterationWriteMode iterationWriteMode = IterationWriteMode.OVERWRITE;
+	private IterationWriteMode iterationWriteMode = new IterationWriteMode(1, 1);
 
 	// --------------------------------------------------------------------------------------------
 	

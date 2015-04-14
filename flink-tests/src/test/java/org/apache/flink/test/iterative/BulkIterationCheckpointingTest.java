@@ -18,35 +18,21 @@
 
 package org.apache.flink.test.iterative;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import org.apache.flink.api.common.functions.MapFunction;
-import org.apache.flink.api.common.io.FileOutputFormat;
-import org.apache.flink.api.common.io.FileOutputFormat.IterationWriteMode;
+import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.api.java.aggregation.Aggregations;
-import org.apache.flink.api.java.io.CsvOutputFormat;
-import org.apache.flink.api.java.io.LocalCollectionOutputFormat;
 import org.apache.flink.api.java.operators.IterativeDataSet;
 import org.apache.flink.api.java.tuple.Tuple1;
-import org.apache.flink.core.fs.Path;
 import org.apache.flink.test.util.JavaProgramTestBase;
-import org.junit.Assert;
 
 
 @SuppressWarnings("serial")
-public class BulkIterationWithSinkITCase extends JavaProgramTestBase {
+public class BulkIterationCheckpointingTest extends JavaProgramTestBase {
 
 	protected String resultPath;
-	protected String resultPath2;
-	protected String resultPath3;
-	
-	private String result1 = "1\n2\n3\n4\n5\n6\n7\n8";
-	private String result6 = "6\n7\n8\n9\n10\n11\n12\n13";
-	private String result10= "10\n11\n12\n13\n14\n15\n16\n17";
-	private String result100= "110\n111\n112\n113\n114\n115\n116\n117";
+
 	
 	protected boolean skipCollectionExecution() {
 		return true;
@@ -54,19 +40,16 @@ public class BulkIterationWithSinkITCase extends JavaProgramTestBase {
 
 	@Override
 	protected void preSubmit() throws Exception {
-		resultPath = "file:/c:/temp/1"; //getTempFilePath("results"); //"hdfs://127.0.0.1:50000/";//getTempFilePath("results");
-		resultPath2 = "file:/c:/temp/2"; //getTempFilePath("results2")+"/collect"; // take sub folder for correct clean up
-		resultPath3 = "file:/c:/temp/3"; //getTempFilePath("results3");
+		resultPath = getTempFilePath("results");
 	}
 	
 	@Override
 	protected void testProgram() throws Exception {
 		
 		ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
-		env.setParallelism(1);
+		env.setParallelism(2);
 		
 		DataSet<Tuple1<Integer>> data = env.fromElements(1, 2, 3, 4, 5, 6, 7, 8).map(new MapFunction<Integer, Tuple1<Integer>>() {
-
 			@Override
 			public Tuple1<Integer> map(Integer value) throws Exception {
 				// TODO Auto-generated method stub
@@ -76,30 +59,18 @@ public class BulkIterationWithSinkITCase extends JavaProgramTestBase {
 		
 		IterativeDataSet<Tuple1<Integer>> iteration = data.iterate(10);
 		
-		iteration.writeAsCsv(resultPath); // by standard iteration write mode is set to OVERWRITE
-		iteration.map(new AddHundredMapper()).writeAsCsv(resultPath3);
+		iteration.setCheckpointInterval(1);
 		
-		FileOutputFormat<Tuple1<Integer>> outputFormat = new CsvOutputFormat<Tuple1<Integer>>(new Path(resultPath2), CsvOutputFormat.DEFAULT_LINE_DELIMITER, CsvOutputFormat.DEFAULT_FIELD_DELIMITER);
-		outputFormat.setIterationWriteMode(new IterationWriteMode(Integer.MAX_VALUE, 1));
-		iteration.output(outputFormat);
+		DataSet<Tuple1<Integer>> result = iteration.map(new AddHundredMapper());
 		
-		DataSet<Tuple1<Integer>> result = iteration.map(new AddOneMapper());
-		
-		final List<Tuple1<Integer>> resultList = new ArrayList<Tuple1<Integer>>();
-		iteration.closeWith(result).aggregate(Aggregations.SUM, 0).output(new LocalCollectionOutputFormat<Tuple1<Integer>>(resultList));
+		iteration.closeWith(result).aggregate(Aggregations.SUM, 0).print();
 		
 		env.execute();
-		
-		Assert.assertEquals(116, resultList.get(0).f0.intValue());
+		System.out.println("FINISH");
 	}
 	
 	@Override
 	protected void postSubmit() throws Exception {
-		compareResultsByLinesInMemory(result10, resultPath+"_10");
-		compareResultsByLinesInMemory(result10, resultPath2+"_10");
-		compareResultsByLinesInMemory(result6, resultPath2+"_6");
-		compareResultsByLinesInMemory(result1, resultPath2+"_1");
-		compareResultsByLinesInMemory(result100, resultPath3+"_10");
 	}
 
 	public static class AddOneMapper implements MapFunction<Tuple1<Integer>, Tuple1<Integer>> {
@@ -111,10 +82,21 @@ public class BulkIterationWithSinkITCase extends JavaProgramTestBase {
 		}
 	}
 	
-	public static class AddHundredMapper implements MapFunction<Tuple1<Integer>, Tuple1<Integer>> {
+	public static class AddHundredMapper extends RichMapFunction<Tuple1<Integer>, Tuple1<Integer>> {
 		
 		@Override
 		public Tuple1<Integer> map(Tuple1<Integer> record) {
+			
+			System.out.println(getIterationRuntimeContext().getSuperstepNumber());
+			if(getIterationRuntimeContext().getSuperstepNumber() == 7) {
+				try {
+					Thread.sleep(12000);
+				} catch (InterruptedException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+			
 			record.f0 += 100;
 			return record;
 		}

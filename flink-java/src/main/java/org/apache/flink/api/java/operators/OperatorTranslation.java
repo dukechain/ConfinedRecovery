@@ -24,6 +24,9 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.flink.api.common.InvalidProgramException;
+import org.apache.flink.api.common.io.FileOutputFormat;
+import org.apache.flink.api.common.io.FileOutputFormat.IterationWriteMode;
+import org.apache.flink.api.common.io.OutputFormat;
 import org.apache.flink.api.common.operators.AbstractUdfOperator;
 import org.apache.flink.api.common.operators.BinaryOperatorInformation;
 import org.apache.flink.api.common.operators.GenericDataSinkBase;
@@ -32,8 +35,13 @@ import org.apache.flink.api.common.operators.UnaryOperatorInformation;
 import org.apache.flink.api.common.operators.base.BulkIterationBase;
 import org.apache.flink.api.common.operators.base.DeltaIterationBase;
 import org.apache.flink.api.java.DataSet;
+import org.apache.flink.api.java.io.CsvOutputFormat;
 import org.apache.flink.api.java.operators.translation.JavaPlan;
+import org.apache.flink.api.java.tuple.Tuple;
+import org.apache.flink.api.java.tuple.Tuple1;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.core.fs.Path;
+import org.apache.flink.util.RecoveryUtil;
 
 public class OperatorTranslation {
 	
@@ -216,6 +224,17 @@ public class OperatorTranslation {
 			for(DataSink<?> s : sinks) {
 				iterationOperator.addIterationSink(translate(s));
 			}
+		}
+		
+		if(iterationHead.getCheckpointInterval() > 0) {
+			
+			String checkpointPath = RecoveryUtil.getCheckpointPath()+"test"; //+iterationHead.getName().trim();
+			System.out.println(checkpointPath);
+			FileOutputFormat<?> outputFormat = new CsvOutputFormat(new Path(checkpointPath), CsvOutputFormat.DEFAULT_LINE_DELIMITER, CsvOutputFormat.DEFAULT_FIELD_DELIMITER);
+			outputFormat.setIterationWriteMode(new IterationWriteMode(2, iterationHead.getCheckpointInterval()));
+			
+			iterationOperator.addIterationSink(
+					translate(iterationHead.output((OutputFormat<T>) outputFormat)));
 		}
 		
 		return iterationOperator;

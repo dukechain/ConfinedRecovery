@@ -293,8 +293,8 @@ class JobManager(val flinkConfiguration: Configuration,
                 val accumulatorResults = accumulatorManager.getJobAccumulatorResults(jobID)
                 jobInfo.client ! JobResultSuccess(jobID, jobInfo.duration, accumulatorResults)
               case JobStatus.CANCELED =>
-                jobInfo.client ! Failure(new JobCancellationException(jobID,
-                  "Job was cancelled.", error))
+                jobInfo.client //! Failure(new JobCancellationException(jobID,
+                //  "Job was cancelled.", error))
               case JobStatus.FAILED =>
                 jobInfo.client ! Failure(new JobExecutionException(jobID,
                   "Job execution failed.", error))
@@ -430,11 +430,11 @@ class JobManager(val flinkConfiguration: Configuration,
         context.unwatch(taskManager)
       }
       
-    case ReportIterationWorkerDone(iterationId, accumulatorEvent) =>
+    case ReportIterationWorkerDone(iterationId, accumulatorEvent, checkpoint) =>
       try {
         this.getIterationManager(accumulatorEvent.getJobID(), iterationId)
           .receiveWorkerDoneEvent(accumulatorEvent.getAccumulators(
-            libraryCacheManager.getClassLoader(accumulatorEvent.getJobID)), sender);
+            libraryCacheManager.getClassLoader(accumulatorEvent.getJobID)), sender, checkpoint);
       } catch {
         case t: Throwable =>
           log.error(t, "Could not process accumulator event of job {} received from {}.",
@@ -451,7 +451,7 @@ class JobManager(val flinkConfiguration: Configuration,
    * @param listenToEvents true if the sender wants to listen to job status and execution state
    *                       change notifications. false if not.
    */
-  private def submitJob(jobGraph: JobGraph, listenToEvents: Boolean): Unit = {
+  def submitJob(jobGraph: JobGraph, listenToEvents: Boolean): Unit = {
     if (jobGraph == null) {
       sender ! Failure(new JobSubmissionException(null, "JobGraph must not be null."))
     }
@@ -554,7 +554,7 @@ class JobManager(val flinkConfiguration: Configuration,
             val taskConfig = new TaskConfig(vertex.getConfiguration)
             val manager = new IterationManager(jobGraph.getJobID, taskConfig.getIterationId, 
                 vertex.getParallelism, taskConfig.getNumberOfIterations, accumulatorManager, 
-                self)
+                self, this, jobGraph, libraryCacheManager)
             if (taskConfig.usesConvergenceCriterion()) {
               val convergenceCriterion = taskConfig.getConvergenceCriterion(userCodeLoader)
                 .asInstanceOf[ConvergenceCriterion[Object]]
@@ -564,6 +564,7 @@ class JobManager(val flinkConfiguration: Configuration,
               manager.setConvergenceCriterion(convergenceAggregatorName, convergenceCriterion)
             }
             iterationManagers = manager :: iterationManagers;
+            executionGraph.addIterationManager(manager);
           }
           else if (vertex.getInvokableClassName
             .equalsIgnoreCase("org.apache.flink.runtime.iterative.task.IterationSinkPactTask")) {

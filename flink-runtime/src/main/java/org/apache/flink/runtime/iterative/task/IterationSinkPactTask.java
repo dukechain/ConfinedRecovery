@@ -20,8 +20,8 @@
 package org.apache.flink.runtime.iterative.task;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Map;
 
 import org.apache.flink.api.common.accumulators.Accumulator;
 import org.apache.flink.api.common.io.FileOutputFormat;
@@ -37,7 +37,6 @@ import org.apache.flink.runtime.operators.DataSinkTask;
 import org.apache.flink.runtime.operators.util.TaskConfig;
 import org.apache.flink.util.MutableObjectIterator;
 
-import scala.concurrent.Future;
 import akka.pattern.Patterns;
 
 public class IterationSinkPactTask<IT> extends DataSinkTask<IT> {
@@ -49,6 +48,12 @@ public class IterationSinkPactTask<IT> extends DataSinkTask<IT> {
 	private volatile boolean terminationRequested;
 	
 	private int superstepNum = 1;
+	
+	private ArrayList<Path> writtenFiles = new ArrayList<Path>();
+	
+	FileOutputFormat<?> fileFormat = (FileOutputFormat<?>) format;
+	
+	private boolean isCheckpoint = false;
 	
 	/**
 	 * The indices of the iterative inputs. Empty, if the task is not iterative. 
@@ -69,23 +74,45 @@ public class IterationSinkPactTask<IT> extends DataSinkTask<IT> {
 		
 		SuperstepKickoffLatch nextSuperstepLatch = SuperstepKickoffLatchBroker.instance().get(brokerKey());
 		
+		// should always be the case. TODO enforce this
+		if(format instanceof FileOutputFormat) {
+			fileFormat = (FileOutputFormat<?>) format;
+		}
+		
 		while(!taskCanceled && !terminationRequested()) {
+				
+			this.isCheckpoint = false;
 			
-			if(format instanceof FileOutputFormat) {
-				FileOutputFormat<?> fileFormat = (FileOutputFormat<?>) format;
-				if(fileFormat.getIterationWriteMode().equals(FileOutputFormat.IterationWriteMode.KEEP_ALL)) {
-					String pathName = fileFormat.getOutputFilePath().toUri().toString();
-					if(this.superstepNum == 1) {
-						pathName += "_"+this.superstepNum;
-					}
-					else {
-						pathName = pathName.substring(0, pathName.length()-2)+"_"+this.superstepNum;
-					}
-					fileFormat.setOutputFilePath(new Path(pathName));
-				}
+			// delete old file if window is full
+			if(writtenFiles.size() == fileFormat.getIterationWriteMode().getWriteWindow()) {
+				fileFormat.getOutputFilePath().getFileSystem().delete(writtenFiles.remove(0), true);
 			}
 			
-			super.invoke();
+			// only write if writeInterval fits
+			if(superstepNum % fileFormat.getIterationWriteMode().getWriteInterval() == 0) {
+				
+				// adjsut path name with current superstep number
+				String pathName = fileFormat.getOutputFilePath().toUri().toString();
+				if(this.superstepNum == 1) {
+					pathName += "_"+this.superstepNum;
+				}
+				else {
+					pathName = pathName.substring(0, pathName.length()-2)+"_"+this.superstepNum;
+				}
+				// set new path
+				fileFormat.setOutputFilePath(new Path(pathName));
+			
+				// do the write
+				super.invoke();
+				
+				// keep track of written files
+				writtenFiles.add(fileFormat.getOutputFilePath());
+				
+				if(pathName.contains("checkpoint")) {
+					this.isCheckpoint = true;
+				}
+			
+			}
 			
 			Environment env = getEnvironment();
 			
@@ -93,7 +120,8 @@ public class IterationSinkPactTask<IT> extends DataSinkTask<IT> {
 			TaskConfig taskConfig = new TaskConfig(getTaskConfiguration());
 			JobManagerMessages.ReportIterationWorkerDone workerDoneEvent = new JobManagerMessages.ReportIterationWorkerDone(
 					taskConfig.getIterationId(),
-					new AccumulatorEvent(getEnvironment().getJobID(), new HashMap<String, Accumulator<?, ?>>()));
+					new AccumulatorEvent(getEnvironment().getJobID(), new HashMap<String, Accumulator<?, ?>>()),
+					this.isCheckpoint);
 
 			
 			Patterns.ask(env.getJobManager(), workerDoneEvent, 3600000);

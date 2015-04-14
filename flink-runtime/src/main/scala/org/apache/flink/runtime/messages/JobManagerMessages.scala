@@ -137,7 +137,7 @@ object JobManagerMessages {
    *
    * @param accumulatorEvent
    */
-  case class ReportIterationWorkerDone(iterationId: Integer, accumulatorEvent: AccumulatorEvent)
+  case class ReportIterationWorkerDone(iterationId: Integer, accumulatorEvent: AccumulatorEvent, isCheckpoint: Boolean)
   
    /**
    * Used by the IterationManager to initiate the next iteration
