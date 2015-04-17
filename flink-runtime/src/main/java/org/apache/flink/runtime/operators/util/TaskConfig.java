@@ -171,6 +171,8 @@ public class TaskConfig implements Serializable {
 	
 	private static final String START_ITERATION = "iterative.start-iteration";
 	
+	private static final String NUMBER_OF_ITERATION_RETRIES = "iterative.num-retries";
+	
 	private static final String NUMBER_OF_EOS_EVENTS_PREFIX = "iterative.num-eos-events.";
 	
 	private static final String NUMBER_OF_EOS_EVENTS_BROADCAST_PREFIX = "iterative.num-eos-events.bc.";
@@ -769,6 +771,18 @@ public class TaskConfig implements Serializable {
 	public int getStartIteration() {
 		int startIteration = this.config.getInteger(START_ITERATION, 1);
 		if (startIteration <= 0) {
+			throw new IllegalArgumentException();
+		}
+		return startIteration;
+	}
+	
+	public void setIterationRetry(int retryNumber) {
+		this.config.setInteger(NUMBER_OF_ITERATION_RETRIES, retryNumber);
+	}
+	
+	public int getIterationRetry() {
+		int startIteration = this.config.getInteger(NUMBER_OF_ITERATION_RETRIES, 0);
+		if (startIteration < 0) {
 			throw new IllegalArgumentException();
 		}
 		return startIteration;

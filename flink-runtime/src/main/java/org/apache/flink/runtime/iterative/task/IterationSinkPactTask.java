@@ -63,6 +63,7 @@ public class IterationSinkPactTask<IT> extends DataSinkTask<IT> {
 	@Override
 	public void invoke() throws Exception
 	{
+
 		// obtain task configuration (including stub parameters)
 		Configuration taskConf = getTaskConfiguration();
 		this.config = new TaskConfig(taskConf);
@@ -91,16 +92,25 @@ public class IterationSinkPactTask<IT> extends DataSinkTask<IT> {
 			// only write if writeInterval fits
 			if(superstepNum % fileFormat.getIterationWriteMode().getWriteInterval() == 0) {
 				
-				// adjsut path name with current superstep number
+				// adjust path name with current superstep number
 				String pathName = fileFormat.getOutputFilePath().toUri().toString();
+				
+				// append retry number to not overwrite existing checkpoint files
+				if(this.config.getIterationRetry() > 0) {
+					pathName += this.config.getIterationRetry();
+				}
+				
 				if(this.superstepNum == 1) {
 					pathName += "_"+this.superstepNum;
 				}
 				else {
 					pathName = pathName.substring(0, pathName.length()-2)+"_"+this.superstepNum;
 				}
+				
+				System.out.println("Iteration Sink "+pathName+"/");
+				
 				// set new path
-				fileFormat.setOutputFilePath(new Path(pathName));
+				fileFormat.setOutputFilePath(new Path(pathName+"/"));
 			
 				// do the write
 				super.invoke();

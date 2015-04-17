@@ -253,9 +253,9 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 		env.setParallelism(PARALLELISM);
 		env.setNumberOfExecutionRetries(1);
 		env.getConfig().setExecutionMode(ExecutionMode.PIPELINED);
-
+	
 		
-		DataSet<Tuple1<Integer>> data = env.generateSequence(1, 100000).map(new MapFunction<Long, Tuple1<Integer>>() {
+		DataSet<Tuple1<Integer>> data = env.generateSequence(1, 1000).map(new MapFunction<Long, Tuple1<Integer>>() {
 			@Override
 			public Tuple1<Integer> map(Long value) throws Exception {
 				// TODO Auto-generated method stub
@@ -270,7 +270,7 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 		DataSet<Tuple1<Integer>> result = iteration.map(new RichMapFunction<Tuple1<Integer>, Tuple1<Integer>>() {
 			
 			private static final long serialVersionUID = 1L;
-
+	
 			private boolean markerCreated = false;
 			
 			public void open(Configuration parameters) throws IOException {
@@ -293,7 +293,7 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 			}
 		});
 		
-		iteration.closeWith(result).aggregate(Aggregations.SUM, 0).writeAsCsv("file:/c:/temp/result");//.print();
+		iteration.closeWith(result).writeAsCsv("file:/c:/temp/result");//.print();
 		
 		env.execute();
 	}

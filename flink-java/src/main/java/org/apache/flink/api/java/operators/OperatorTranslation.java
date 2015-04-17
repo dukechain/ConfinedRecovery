@@ -37,8 +37,6 @@ import org.apache.flink.api.common.operators.base.DeltaIterationBase;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.io.CsvOutputFormat;
 import org.apache.flink.api.java.operators.translation.JavaPlan;
-import org.apache.flink.api.java.tuple.Tuple;
-import org.apache.flink.api.java.tuple.Tuple1;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.util.RecoveryUtil;
@@ -228,7 +226,7 @@ public class OperatorTranslation {
 		
 		if(iterationHead.getCheckpointInterval() > 0) {
 			
-			String checkpointPath = RecoveryUtil.getCheckpointPath()+"test"; //+iterationHead.getName().trim();
+			String checkpointPath = RecoveryUtil.getCheckpointPath()+"checkpoint"; //+iterationHead.getName().trim();
 			System.out.println(checkpointPath);
 			FileOutputFormat<?> outputFormat = new CsvOutputFormat(new Path(checkpointPath), CsvOutputFormat.DEFAULT_LINE_DELIMITER, CsvOutputFormat.DEFAULT_FIELD_DELIMITER);
 			outputFormat.setIterationWriteMode(new IterationWriteMode(2, iterationHead.getCheckpointInterval()));

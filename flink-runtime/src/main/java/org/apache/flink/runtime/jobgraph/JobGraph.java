@@ -237,6 +237,18 @@ public class JobGraph implements Serializable {
 			throw new IllegalArgumentException("The JobGraph already contains a vertex with that id.");
 		}
 	}
+	
+	/**
+	 * Adds a new task vertex to the job graph if it is not already included.
+	 * 
+	 * @param vertex
+	 *        the new task vertex to be added
+	 */
+	public void removeVertex(AbstractJobVertex vertex) {
+		final JobVertexID id = vertex.getID();
+		taskVertices.remove(id);
+		
+	}
 
 	/**
 	 * Returns an Iterable to iterate all vertices registered with the job graph.

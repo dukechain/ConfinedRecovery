@@ -24,9 +24,19 @@ import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.GlobalConfiguration;
 
 public class RecoveryUtil {
+	
+	private static String newPath;
+	
 	public static String getCheckpointPath() {
+		if(newPath != null) {
+			return newPath;
+		}
 		return GlobalConfiguration.getString(ConfigConstants.TASK_MANAGER_CHECKPT_DIR_KEY, 
 				GlobalConfiguration.getString(ConfigConstants.TASK_MANAGER_TMP_DIR_KEY,
 				ConfigConstants.DEFAULT_TASK_MANAGER_TMP_PATH).split(File.pathSeparator)[0]);
+	}
+	
+	public static void setNewPath(String path) {
+		newPath = path;
 	}
 }

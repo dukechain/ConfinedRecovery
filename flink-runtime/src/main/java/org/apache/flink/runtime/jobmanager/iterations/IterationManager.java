@@ -18,7 +18,6 @@
 
 package org.apache.flink.runtime.jobmanager.iterations;
 
-import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -30,28 +29,31 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.InvalidProgramException;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.accumulators.Accumulator;
 import org.apache.flink.api.common.accumulators.ConvergenceCriterion;
+import org.apache.flink.api.common.distributions.DataDistribution;
+import org.apache.flink.api.common.functions.Partitioner;
 import org.apache.flink.api.common.io.FileInputFormat;
 import org.apache.flink.api.common.io.InputFormat;
 import org.apache.flink.api.common.operators.util.UserCodeObjectWrapper;
 import org.apache.flink.api.common.operators.util.UserCodeWrapper;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.common.typeutils.TypeComparatorFactory;
 import org.apache.flink.api.common.typeutils.TypeSerializerFactory;
 import org.apache.flink.api.java.io.CsvInputFormat;
-import org.apache.flink.configuration.ConfigConstants;
-import org.apache.flink.configuration.GlobalConfiguration;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.accumulators.AccumulatorEvent;
-import org.apache.flink.runtime.client.JobExecutionException;
 import org.apache.flink.runtime.execution.librarycache.LibraryCacheManager;
+import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.iterative.task.AbstractIterativePactTask;
 import org.apache.flink.runtime.jobgraph.AbstractJobVertex;
+import org.apache.flink.runtime.jobgraph.DistributionPattern;
 import org.apache.flink.runtime.jobgraph.InputFormatVertex;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSet;
+import org.apache.flink.runtime.jobgraph.JobEdge;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobmanager.JobManager;
 import org.apache.flink.runtime.jobmanager.accumulators.AccumulatorManager;
@@ -115,9 +117,11 @@ public class IterationManager {
 	
 	private AtomicBoolean initRerun = new AtomicBoolean(false);
 	
-	private int lastCheckpoint = 6;
+	private Integer lastCheckpoint = 0;
 	
-	private int nextCheckpoint;
+	private Integer nextCheckpoint = 0;
+	
+	private int retries = 0;
 	
 	public IterationManager(JobID jobId, int iterationId, int parallelism, int maxNumberOfIterations, 
 			AccumulatorManager accumulatorManager, ActorRef jobManagerRef, JobManager jobManager,
@@ -165,9 +169,13 @@ public class IterationManager {
 		}
 		
 		// set checkpoints
-		if(checkpoint && nextCheckpoint != currentIteration) {
-			lastCheckpoint = nextCheckpoint;
-			nextCheckpoint = currentIteration;
+		if(checkpoint) {
+			synchronized (nextCheckpoint) {
+				if(nextCheckpoint != currentIteration) {
+					lastCheckpoint = nextCheckpoint;
+					nextCheckpoint = currentIteration;
+				}
+			}
 		}
 		
 		// if all workers have sent their WorkerDoneEvent -> end of superstep
@@ -362,40 +370,50 @@ public class IterationManager {
 			// here to avoid concurrent modification exception
 			TaskConfig iterationTaskConfig = new TaskConfig(iterationVertex.getConfiguration());
 			
-			String checkpointPath = RecoveryUtil.getCheckpointPath()+"test"; //+iterationVertex.getName().trim();
+			String checkpointPath = RecoveryUtil.getCheckpointPath()+"checkpoint"; //+iterationVertex.getName().trim();
+			
+			if(retries > 0) {
+				checkpointPath += retries;
+			}
+			
+			// save distribution pattern
+			DistributionPattern dp = iterationVertex.getInputs().get(0).getDistributionPattern();
+			ResultPartitionType rpt = iterationVertex.getInputs().get(0).getSource().getResultType();
+			
+			TaskConfig sourceConfig = new TaskConfig(iterationVertex.getInputs().get(0).getSource().getProducer().getConfiguration());
+			if(sourceConfig.getNumberOfChainedStubs() > 0) {
+				sourceConfig = sourceConfig.getChainedStubConfig(0);
+			}
+			
+			ClassLoader cl = this.libraryCacheManager.getClassLoader(jobId);
 
 			InputFormatVertex checkpoint;
 			try {
 				// create new checkpoint source to attach in front of the iteration
-				checkpoint = createCheckpointInput(jobGraph, "file:/c:/temp/checkpoint_"+lastCheckpoint, this.parallelism, 
-						iterationTaskConfig.getOutputSerializer(this.libraryCacheManager.getClassLoader(jobId)),
-						iterationTaskConfig.getOutputType(1, this.libraryCacheManager.getClassLoader(jobId)));
+				checkpoint = createCheckpointInput(jobGraph, checkpointPath+"_"+lastCheckpoint+"/", this.parallelism, 
+						iterationTaskConfig.getOutputSerializer(cl), iterationTaskConfig.getOutputType(1, cl), 
+						sourceConfig.getOutputShipStrategy(0), sourceConfig.getOutputComparator(0, cl),
+						sourceConfig.getOutputDataDistribution(0, cl), sourceConfig.getOutputPartitioner(0, cl));
 				
-				
-					if(checkpoint.getParallelism() == ExecutionConfig.PARALLELISM_AUTO_MAX) {
-						checkpoint.setParallelism(jobManager.scheduler().getTotalNumberOfSlots());
-					}
-					else {
-						checkpoint.setParallelism(this.parallelism);
-					}
-		        	
-					try {
-						checkpoint.initializeOnMaster(libraryCacheManager.getClassLoader(jobId));
-						}
-					catch(Throwable t) {
-						throw new RuntimeException(
-								"Cannot initialize checkpoint task : " + t.getMessage(), t);
-						}
-				
+				System.out.println("checkpointPath"+lastCheckpoint+"/");
 				
 				jobGraph.addVertex(checkpoint);
 				
-				iterationVertex.connectNewDataSetAsInput(checkpoint, iterationVertex.getInputs().get(0).getDistributionPattern());
-				iterationTaskConfig.setNumberOfIterations(maxNumberOfIterations - currentIteration);		
+				// remove everything before the iteration
+				for(JobEdge edge : iterationVertex.getInputs()) {
+					removePredecessors(edge.getSource().getProducer());
+				}
+				
+				// clear iteration inputs
+				iterationVertex.getInputs().clear();
+				
+				// connect checkpoint as new input
+				iterationVertex.connectNewDataSetAsInput(checkpoint, dp, rpt);
+				
+				iterationTaskConfig.setNumberOfIterations(maxNumberOfIterations - currentIteration + 1);		
 				
 				// generate new job id
 				jobGraph.setJobID(JobID.generate());
-
 				
 				// adjust parallelism
 				for(AbstractJobVertex v : jobGraph.getVertices()) {
@@ -405,51 +423,84 @@ public class IterationManager {
 						v.setParallelism(v.getParallelism() - 1);
 					}
 					
-					if(v.getCoLocationGroup() != null) {
-						v.getCoLocationGroup().resetConstraints();
-					}
 					
+					// re initialize
+					try {
+						v.initializeOnMaster(libraryCacheManager.getClassLoader(jobId));
+						}
+					catch(Throwable t) {
+						throw new RuntimeException(
+								"Cannot initialize checkpoint task : " + t.getMessage(), t);
+						}
+					
+					// continue superstep where stopped
 					if(v.getClass().isAssignableFrom(AbstractIterativePactTask.class)) {
 						iterationTaskConfig.setStartIteration(lastCheckpoint);
 					}
-					
 				}
 				
 				// adjust state of this iteration manager
 				this.parallelism--;
 				this.numberOfEventsUntilEndOfSuperstep = this.numberOfTails * this.parallelism;
 				this.workers.clear();
+				this.retries++;
+				this.currentIteration--;
+				this.workerDoneEventCounter = 0;
+				
+				// adjust checkpoint vertices
+				for(IntermediateDataSet ds : iterationVertex.getProducedDataSets()) {
+					for(JobEdge e : ds.getConsumers()) {
+						if(e.getTarget().getName().contains("checkpoint")) {
+							TaskConfig taskConfig = new TaskConfig(e.getTarget().getConfiguration());
+							taskConfig.setIterationRetry(retries);
+						}
+					}
+				}
 				
 				System.out.println("submit");
 				
 				try {
 					jobManager.currentJobs().get(jobId).get()._1.restartHard(jobGraph.getVerticesSortedTopologicallyFromSources());
-				} catch (InvalidProgramException e) {
+				} catch (InvalidProgramException e) {                                                                                                                                                                                                                                                   
 					// TODO Auto-generated catch block
 					e.printStackTrace();
 				} catch (JobException e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
+					throw new RuntimeException("Something went wrong during the restart of the recovery");
 				}
 				
 				//jobManager.submitJob(jobGraph, false);
 				
 			} catch (ClassNotFoundException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
+				throw new RuntimeException("Something went wrong during recovery");
 			}
 		}
 	}
 	
 	private static <X> InputFormatVertex createCheckpointInput(JobGraph jobGraph, String checkpointPath, 
-			int numSubTasks, TypeSerializerFactory<?> serializer, TypeInformation<X> typeInfo ) {
+			int numSubTasks, TypeSerializerFactory<?> serializer, TypeInformation<X> typeInfo, ShipStrategyType shipStrategy,
+			TypeComparatorFactory<?> comparator, DataDistribution dataDistribution, Partitioner<?> partitioner) {
 		
 		CsvInputFormat<X> pointsInFormat = new CsvInputFormat<X>(new Path(checkpointPath), typeInfo);
-		InputFormatVertex pointsInput = createInput(pointsInFormat, checkpointPath, "[CHECKPOINT]", jobGraph, numSubTasks);
+		InputFormatVertex pointsInput = createInput(pointsInFormat, checkpointPath, "[CHECKPOINT] path: "+checkpointPath, jobGraph, numSubTasks);
 		{
 			TaskConfig taskConfig = new TaskConfig(pointsInput.getConfiguration());
-			taskConfig.addOutputShipStrategy(ShipStrategyType.FORWARD);
+			taskConfig.addOutputShipStrategy(shipStrategy);
 			taskConfig.setOutputSerializer(serializer);
+			System.out.println(shipStrategy);
+			if(comparator != null) {
+				System.out.println(comparator);
+				taskConfig.setOutputComparator(comparator, 0);
+			}
+			if(dataDistribution != null) {
+				System.out.println(dataDistribution);
+				taskConfig.setOutputDataDistribution(dataDistribution, 0);
+			}
+			if(partitioner != null) {
+				System.out.println(partitioner);
+				taskConfig.setOutputPartitioner(partitioner, 0);
+			}
 		}
 		return pointsInput;
 	}
@@ -474,5 +525,14 @@ public class IterationManager {
 		inputConfig.setStubWrapper(stub);
 		
 		return inputVertex;
+	}
+	
+	private void removePredecessors(AbstractJobVertex vertex) {
+		if(vertex.getInputs() != null && vertex.getInputs().size() > 0) {
+			for(JobEdge edge : vertex.getInputs()) {
+				removePredecessors(edge.getSource().getProducer());
+			}
+		}
+		jobGraph.removeVertex(vertex);
 	}
 }

@@ -770,22 +770,32 @@ public class ExecutionGraph implements Serializable {
 			for (ExecutionJobVertex ejv : verticesInCreationOrder) {
 				ejv.cancel();
 			}
+			
+			// clear internal lists
+			this.tasks.clear();
+			this.intermediateResults.clear();
+			this.verticesInCreationOrder.clear();
+			this.currentExecutions.clear();
+			nextVertexToFinish = 0;
+			
+			for(AbstractJobVertex v : topologiallySorted) {
+				if(v.getCoLocationGroup() != null) {
+					v.getCoLocationGroup().resetConstraints();
+				}
+				if (v.getSlotSharingGroup() != null) {
+					v.getSlotSharingGroup().clearTaskAssignment();
+				}
+			}
+			
+			// attach new job graph
+			this.attachJobGraph(topologiallySorted);
+			
+			// reset state
+			transitionState(JobStatus.RESTARTING, JobStatus.CREATED);
+			
+			// schedule
+			scheduleForExecution(scheduler);
 		}
-		
-		// clear internal lists
-		this.tasks.clear();
-		this.intermediateResults.clear();
-		this.verticesInCreationOrder.clear();
-		this.currentExecutions.clear();
-		
-		// attach new job graph
-		this.attachJobGraph(topologiallySorted);
-		
-		// reset state
-		transitionState(JobStatus.RESTARTING, JobStatus.CREATED);
-		
-		// schedule
-		scheduleForExecution(scheduler);
 	}
 	
 	/**

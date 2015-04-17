@@ -40,6 +40,8 @@ public abstract class VertexUpdateFunction<VertexKey extends Comparable<VertexKe
 
 	private static final long serialVersionUID = 1L;
 	
+	private boolean lastVertexCollected = false;
+	
 	// --------------------------------------------------------------------------------------------
 	//  Public API Methods
 	// --------------------------------------------------------------------------------------------
@@ -82,10 +84,6 @@ public abstract class VertexUpdateFunction<VertexKey extends Comparable<VertexKe
 		this.lastVertexCollected = true;
 	}
 	
-	public boolean lastVertexCollected() {
-		return lastVertexCollected;
-	}
-	
 	/**
 	 * Gets the number of the superstep, starting at <tt>1</tt>.
 	 * 
@@ -96,7 +94,12 @@ public abstract class VertexUpdateFunction<VertexKey extends Comparable<VertexKe
 	}
 	
 	/**
+<<<<<<< HEAD
 	 * Adds an accumulator to this iteration. The accumulator is reset after each superstep.
+=======
+	 * Gets the iteration aggregator registered under the given name. The iteration aggregator combines
+	 * all aggregates globally once per superstep and makes them available in the next superstep.
+>>>>>>> gellyBulkMode
 	 * 
 	 * @param name
 	 * @param accumulator
@@ -127,6 +130,10 @@ public abstract class VertexUpdateFunction<VertexKey extends Comparable<VertexKe
 		return this.runtimeContext.<T>getBroadcastVariable(name);
 	}
 	
+	public boolean lastVertexCollected() {
+		return lastVertexCollected;
+	}
+	
 	// --------------------------------------------------------------------------------------------
 	//  internal methods
 	// --------------------------------------------------------------------------------------------
@@ -136,8 +143,6 @@ public abstract class VertexUpdateFunction<VertexKey extends Comparable<VertexKe
 	private Collector<Vertex<VertexKey, VertexValue>> out;
 	
 	private Vertex<VertexKey, VertexValue> outVal;
-	
-	private boolean lastVertexCollected = false;
 	
 	
 	void init(IterationRuntimeContext context) {

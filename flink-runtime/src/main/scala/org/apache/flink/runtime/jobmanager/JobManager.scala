@@ -577,7 +577,8 @@ class JobManager(val flinkConfiguration: Configuration,
             }
           }
         }
-        tailMap foreach ( (tail) => getIterationManager(jobGraph.getJobID, tail._1).setNumberOfTails(tail._2 + 1));
+        tailMap foreach ( (tail) => getIterationManager(jobGraph.getJobID, tail._1)
+            .setNumberOfTails(tail._2 + 1));
 
         // give an actorContext
         executionGraph.setParentContext(context);
