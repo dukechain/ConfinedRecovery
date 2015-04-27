@@ -29,6 +29,7 @@ import org.apache.flink.api.common.functions.IterationRuntimeContext;
 import org.apache.flink.api.common.operators.util.JoinHashMap;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.TypeSerializerFactory;
+import org.apache.flink.core.io.IOReadableWritable;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.network.api.reader.MutableReader;
@@ -123,6 +124,7 @@ public abstract class AbstractIterativePactTask<S extends Function, OT> extends 
 
 	@Override
 	public void run() throws Exception {
+		
 		if (inFirstIteration()) {
 			if (this.driver instanceof ResettablePactDriver) {
 				// initialize the repeatable driver
@@ -135,7 +137,7 @@ public abstract class AbstractIterativePactTask<S extends Function, OT> extends 
 			// re-read the iterative broadcast variables
 			for (int i : this.iterativeBroadcastInputs) {
 				final String name = getTaskConfig().getBroadcastInputName(i);
-				readAndSetBroadcastInput(i, name, this.runtimeUdfContext, superstepNum);
+				readAndSetBroadcastInput(i, name, this.runtimeUdfContext, superstepNum, true);
 			}
 		}
 
@@ -145,7 +147,7 @@ public abstract class AbstractIterativePactTask<S extends Function, OT> extends 
 		// release the iterative broadcast variables
 		for (int i : this.iterativeBroadcastInputs) {
 			final String name = getTaskConfig().getBroadcastInputName(i);
-			releaseBroadcastVariables(name, superstepNum, this.runtimeUdfContext);
+			//releaseBroadcastVariables(name, superstepNum, this.runtimeUdfContext);
 		}
 	}
 
@@ -257,8 +259,21 @@ public abstract class AbstractIterativePactTask<S extends Function, OT> extends 
 
 			if (!reader.isFinished()) {
 				
+//				// HACK! TODO
+//				if(!reader.hasReachedEndOfSuperstep() && config.getIterationRetry() > 0) {
+////					MutableReader<IOReadableWritable> reader2 = (MutableReader<IOReadableWritable>) reader;
+////					IOReadableWritable target = null;
+////					try {
+////						while(reader2.next(target)) {}
+////					} catch (InterruptedException e) {
+////						// TODO Auto-generated catch block
+////						e.printStackTrace();
+////					}
+//					reader.clearBuffers();
+//				}
+				
 				// sanity check that the BC input is at the end of the superstep
-				if (!reader.hasReachedEndOfSuperstep()) {
+				if (!reader.hasReachedEndOfSuperstep() && config.getIterationRetry() == 0) {
 					throw new IllegalStateException("An iterative broadcast input has not been fully consumed.");
 				}
 				

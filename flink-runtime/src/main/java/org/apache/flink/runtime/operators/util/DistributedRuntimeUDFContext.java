@@ -38,7 +38,7 @@ import com.google.common.base.Preconditions;
  */
 public class DistributedRuntimeUDFContext extends AbstractRuntimeUDFContext {
 
-	private final HashMap<String, BroadcastVariableMaterialization<?, ?>> broadcastVars = new HashMap<String, BroadcastVariableMaterialization<?, ?>>();
+	private HashMap<String, BroadcastVariableMaterialization<?, ?>> broadcastVars = new HashMap<String, BroadcastVariableMaterialization<?, ?>>();
 	
 	
 	public DistributedRuntimeUDFContext(String name, int numParallelSubtasks, int subtaskIndex, ClassLoader userCodeClassLoader, ExecutionConfig executionConfig) {
@@ -102,5 +102,9 @@ public class DistributedRuntimeUDFContext extends AbstractRuntimeUDFContext {
 	
 	public void clearAllBroadcastVariables() {
 		this.broadcastVars.clear();
+	}
+	
+	public HashMap<String, BroadcastVariableMaterialization<?, ?>> getBroadcastVariables() {
+		return this.broadcastVars;
 	}
 }

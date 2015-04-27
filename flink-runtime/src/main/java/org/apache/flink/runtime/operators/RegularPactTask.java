@@ -18,13 +18,19 @@
 
 package org.apache.flink.runtime.operators;
 
-import akka.actor.ActorRef;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentHashMap;
+
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.accumulators.Accumulator;
 import org.apache.flink.api.common.accumulators.AccumulatorHelper;
 import org.apache.flink.api.common.distributions.DataDistribution;
-import org.apache.flink.api.common.functions.GroupCombineFunction;
 import org.apache.flink.api.common.functions.Function;
+import org.apache.flink.api.common.functions.GroupCombineFunction;
 import org.apache.flink.api.common.functions.Partitioner;
 import org.apache.flink.api.common.functions.util.FunctionUtils;
 import org.apache.flink.api.common.typeutils.TypeComparator;
@@ -70,10 +76,7 @@ import org.apache.flink.util.MutableObjectIterator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import akka.actor.ActorRef;
 
 /**
  * The base class for all tasks. Encapsulated common behavior and implements the main life-cycle
@@ -211,6 +214,10 @@ public class RegularPactTask<S extends Function, OT> extends AbstractInvokable i
 	 * The flag that tags the task as still running. Checked periodically to abort processing.
 	 */
 	protected volatile boolean running = true;
+	
+	// Dangerous!
+	protected static ConcurrentHashMap<String, BroadcastVariableMaterialization<?, ?>> broadcastVars =
+			new ConcurrentHashMap<String, BroadcastVariableMaterialization<?, ?>>();
 
 	
 	// --------------------------------------------------------------------------------------------
@@ -351,13 +358,26 @@ public class RegularPactTask<S extends Function, OT> extends AbstractInvokable i
 
 			// pre main-function initialization
 			initialize();
-
-			// read the broadcast variables. they will be released in the finally clause 
-			for (int i = 0; i < this.config.getNumBroadcastInputs(); i++) {
-				final String name = this.config.getBroadcastInputName(i);
-				readAndSetBroadcastInput(i, name, this.runtimeUdfContext, 1 /* superstep one for the start */);
+			
+			if(this.config.getIterationRetry() > 0) {	
+				// read the broadcast variables. they will be released in the finally clause 
+				for (int i = 0; i < this.config.getNumBroadcastInputs(); i++) {
+					final String name = this.config.getBroadcastInputName(i);
+					readAndSetBroadcastInput(i, name, this.runtimeUdfContext, 1 /* superstep one for the start */, false);
+				}
+				
+				for(Entry<String, BroadcastVariableMaterialization<?, ?>> bc : broadcastVars.entrySet()) {
+					this.runtimeUdfContext.setBroadcastVariable(bc.getKey(), bc.getValue());
+				}
 			}
-
+			else {
+				// read the broadcast variables. they will be released in the finally clause 
+				for (int i = 0; i < this.config.getNumBroadcastInputs(); i++) {
+					final String name = this.config.getBroadcastInputName(i);
+					readAndSetBroadcastInput(i, name, this.runtimeUdfContext, 1 /* superstep one for the start */, true);
+				}
+			}
+			
 			// the work goes here
 			run();
 		}
@@ -424,7 +444,7 @@ public class RegularPactTask<S extends Function, OT> extends AbstractInvokable i
 		}
 	}
 	
-	protected <X> void readAndSetBroadcastInput(int inputNum, String bcVarName, DistributedRuntimeUDFContext context, int superstep) throws IOException {
+	protected <X> void readAndSetBroadcastInput(int inputNum, String bcVarName, DistributedRuntimeUDFContext context, int superstep, boolean checkpoint) throws IOException {
 		
 		if (LOG.isDebugEnabled()) {
 			LOG.debug(formatLogString("Setting broadcast variable '" + bcVarName + "'" + 
@@ -438,6 +458,10 @@ public class RegularPactTask<S extends Function, OT> extends AbstractInvokable i
 
 		BroadcastVariableMaterialization<X, ?> variable = getEnvironment().getBroadcastVariableManager().materializeBroadcastVariable(bcVarName, superstep, this, reader, serializerFactory);
 		context.setBroadcastVariable(bcVarName, variable);
+		
+		if(checkpoint) {
+			broadcastVars.put(bcVarName, variable);
+		}
 	}
 	
 	protected void releaseBroadcastVariables(String bcVarName, int superstep, DistributedRuntimeUDFContext context) {
@@ -608,7 +632,8 @@ public class RegularPactTask<S extends Function, OT> extends AbstractInvokable i
 			LOG.debug(formatLogString("Releasing all broadcast variables."));
 		}
 		
-		getEnvironment().getBroadcastVariableManager().releaseAllReferencesFromTask(this);
+		// TODO Only keep if checkpointing is activated
+		//getEnvironment().getBroadcastVariableManager().releaseAllReferencesFromTask(this);
 		if (runtimeUdfContext != null) {
 			runtimeUdfContext.clearAllBroadcastVariables();
 		}

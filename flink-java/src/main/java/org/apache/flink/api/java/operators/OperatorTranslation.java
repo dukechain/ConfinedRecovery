@@ -226,13 +226,33 @@ public class OperatorTranslation {
 		
 		if(iterationHead.getCheckpointInterval() > 0) {
 			
-			String checkpointPath = RecoveryUtil.getCheckpointPath()+"checkpoint"; //+iterationHead.getName().trim();
-			System.out.println(checkpointPath);
-			FileOutputFormat<?> outputFormat = new CsvOutputFormat(new Path(checkpointPath), CsvOutputFormat.DEFAULT_LINE_DELIMITER, CsvOutputFormat.DEFAULT_FIELD_DELIMITER);
-			outputFormat.setIterationWriteMode(new IterationWriteMode(2, iterationHead.getCheckpointInterval()));
+			boolean anyRegularInput = false;
 			
-			iterationOperator.addIterationSink(
-					translate(iterationHead.output((OutputFormat<T>) outputFormat)));
+			if(iterationOperator.getNextPartialSolution() instanceof org.apache.flink.api.common.operators.SingleInputOperator) {
+				if(((org.apache.flink.api.common.operators.SingleInputOperator) iterationOperator.getNextPartialSolution() ).getInput()
+				.equals(iterationOperator.getPartialSolution())) {
+					anyRegularInput = true;
+				}
+			}
+			
+			if(iterationOperator.getNextPartialSolution() instanceof org.apache.flink.api.common.operators.DualInputOperator) {
+				org.apache.flink.api.common.operators.DualInputOperator dio = 
+						(org.apache.flink.api.common.operators.DualInputOperator)  iterationOperator.getNextPartialSolution();
+				if(dio.getFirstInput().equals(iterationOperator.getPartialSolution())
+						|| dio.getSecondInput().equals(iterationOperator.getPartialSolution())) {
+					anyRegularInput = true;
+				}
+			}
+			
+			if(anyRegularInput) {
+				String checkpointPath = RecoveryUtil.getCheckpointPath()+"checkpoint"; //+iterationHead.getName().trim();
+				System.out.println(checkpointPath);
+				FileOutputFormat<?> outputFormat = new CsvOutputFormat(new Path(checkpointPath), CsvOutputFormat.DEFAULT_LINE_DELIMITER, CsvOutputFormat.DEFAULT_FIELD_DELIMITER);
+				outputFormat.setIterationWriteMode(new IterationWriteMode(2, iterationHead.getCheckpointInterval()));
+				
+				iterationOperator.addIterationSink(
+						translate(iterationHead.output((OutputFormat<T>) outputFormat)));
+			}
 		}
 		
 		return iterationOperator;

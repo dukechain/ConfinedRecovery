@@ -101,4 +101,8 @@ public class CoLocationGroup implements java.io.Serializable {
 		}
 		this.constraints.clear();
 	}
+	
+	public void resetConstraintsHard() {
+		this.constraints.clear();
+	}
 }

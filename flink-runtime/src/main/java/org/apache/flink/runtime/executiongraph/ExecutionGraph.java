@@ -771,6 +771,7 @@ public class ExecutionGraph implements Serializable {
 				ejv.cancel();
 			}
 			
+			System.out.println("CANCELED");
 			// clear internal lists
 			this.tasks.clear();
 			this.intermediateResults.clear();
@@ -780,19 +781,21 @@ public class ExecutionGraph implements Serializable {
 			
 			for(AbstractJobVertex v : topologiallySorted) {
 				if(v.getCoLocationGroup() != null) {
-					v.getCoLocationGroup().resetConstraints();
+					v.getCoLocationGroup().resetConstraintsHard();
 				}
 				if (v.getSlotSharingGroup() != null) {
 					v.getSlotSharingGroup().clearTaskAssignment();
 				}
 			}
 			
+			System.out.println("ATTACHING");
 			// attach new job graph
 			this.attachJobGraph(topologiallySorted);
 			
 			// reset state
 			transitionState(JobStatus.RESTARTING, JobStatus.CREATED);
 			
+			System.out.println("SCHEDULE");
 			// schedule
 			scheduleForExecution(scheduler);
 		}
