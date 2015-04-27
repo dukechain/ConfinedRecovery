@@ -83,6 +83,7 @@ import org.apache.flink.runtime.operators.shipping.ShipStrategyType;
 import org.apache.flink.runtime.operators.util.LocalStrategy;
 import org.apache.flink.runtime.operators.util.TaskConfig;
 import org.apache.flink.util.InstantiationUtil;
+import org.apache.flink.util.RecoveryUtil;
 import org.apache.flink.util.Visitor;
 
 /**
@@ -997,6 +998,8 @@ public class JobGraphGenerator implements Visitor<PlanNode> {
 		
 		headConfig.setSolutionSetUnmanaged(iteration.getIterationNode().getIterationContract().isSolutionSetUnManaged());
 		
+		headConfig.setOutputType(wspn.getOptimizerNode().getOperator().getOperatorInfo().getOutputType(), 1);
+		
 		// create the iteration descriptor and the iteration to it
 		IterationDescriptor descr = this.iterations.get(iteration);
 		if (descr == null) {
@@ -1332,6 +1335,8 @@ public class JobGraphGenerator implements Visitor<PlanNode> {
 				throw new CompilerException("Cannot create workset iteration with unspecified maximum number of iterations.");
 			}
 			headConfig.setNumberOfIterations(maxNumIterations);
+			
+			headConfig.setIterationHeadCheckpointPath(RecoveryUtil.getCheckpointPath());
 			
 			// create tails for iteration sinks
 			for(SinkPlanNode sink : iterNode.getIterationSinks()) {

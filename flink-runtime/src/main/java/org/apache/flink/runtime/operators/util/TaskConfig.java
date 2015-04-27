@@ -179,6 +179,8 @@ public class TaskConfig implements Serializable {
 	
 	private static final String ITERATION_HEAD_ID = "iterative.head.id";
 	
+	private static final String ITERATION_HEAD_CHECKPOINT_PATH = "iterative.head.checkpoint.path";
+	
 	private static final String ITERATION_WORKSET_MARKER = "iterative.is-workset";
 	
 	private static final String ITERATION_HEAD_INDEX_OF_PARTIAL_SOLUTION = "iterative.head.ps-input-index";
@@ -786,6 +788,14 @@ public class TaskConfig implements Serializable {
 			throw new IllegalArgumentException();
 		}
 		return startIteration;
+	}
+	
+	public void setIterationHeadCheckpointPath(String path) {
+		this.config.setString(ITERATION_HEAD_CHECKPOINT_PATH, path);
+	}
+	
+	public String getIterationHeadCheckpointPath() {
+		return this.config.getString(ITERATION_HEAD_CHECKPOINT_PATH, "");
 	}
 	
 	public void setIterationHeadPartialSolutionOrWorksetInputIndex(int inputIndex) {

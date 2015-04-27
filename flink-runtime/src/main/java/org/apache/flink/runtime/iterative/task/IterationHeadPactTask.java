@@ -20,6 +20,7 @@ package org.apache.flink.runtime.iterative.task;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -27,11 +28,16 @@ import java.util.concurrent.TimeUnit;
 import org.apache.flink.api.common.accumulators.Accumulator;
 import org.apache.flink.api.common.accumulators.LongCounter;
 import org.apache.flink.api.common.functions.Function;
+import org.apache.flink.api.common.io.FileOutputFormat;
+import org.apache.flink.api.common.io.FileOutputFormat.OutputDirectoryMode;
 import org.apache.flink.api.common.operators.util.JoinHashMap;
 import org.apache.flink.api.common.typeutils.TypeComparator;
 import org.apache.flink.api.common.typeutils.TypeComparatorFactory;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.TypeSerializerFactory;
+import org.apache.flink.api.java.io.CsvOutputFormat;
+import org.apache.flink.core.fs.FileSystem.WriteMode;
+import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.runtime.accumulators.AccumulatorEvent;
@@ -350,6 +356,39 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 
 				if (!inFirstIteration()) {
 					feedBackSuperstepResult(superstepResult);
+				}
+				
+				// CHECKPOINT SOLUTION SET
+				if(isWorksetIteration) {
+					String pathName = config.getIterationHeadCheckpointPath();
+					pathName += "deltacheckpoint_"+this.currentIteration()+"/";
+					
+					final FileOutputFormat format = new CsvOutputFormat(new Path(pathName));
+					format.setWriteMode(WriteMode.OVERWRITE);
+					format.setOutputDirectoryMode(OutputDirectoryMode.PARONLY);
+					SolutionSetBroker.instance().get(brokerKey);
+					
+					format.open(this.getEnvironment().getIndexInSubtaskGroup(), this.getEnvironment().getNumberOfSubtasks());
+					
+					if (objectSolutionSet) {
+						JoinHashMap<X> solutionSetTemp = (JoinHashMap<X>) SolutionSetBroker.instance().get(brokerKey);
+						X item;
+						Iterator it = solutionSetTemp.entrySet().iterator();
+						while(solutionSetTemp.entrySet().iterator().hasNext()) {
+							item = (X) solutionSetTemp.entrySet().iterator().next();
+							format.writeRecord(item);
+						}
+					} else {
+						CompactingHashTable<X> solutionSetTemp = (CompactingHashTable<X>) SolutionSetBroker.instance().get(brokerKey);
+						MutableObjectIterator<X> it = solutionSetTemp.getEntryIterator();
+						X item = it.next();
+						while(item != null) {
+							format.writeRecord(item);
+							item = it.next();
+						}
+					}
+					
+					format.close();
 				}
 
 				super.run();

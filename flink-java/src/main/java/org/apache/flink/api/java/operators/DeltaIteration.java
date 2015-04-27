@@ -54,6 +54,8 @@ public class DeltaIteration<ST, WT> {
 	
 	private boolean solutionSetUnManaged;
 	
+	private int checkpointInterval = 0;
+	
 	
 	public DeltaIteration(ExecutionEnvironment context, TypeInformation<ST> type, DataSet<ST> solutionSet, DataSet<WT> workset, Keys<ST> keys, int maxIterations) {
 		initialSolutionSet = solutionSet;
@@ -250,5 +252,13 @@ public class DeltaIteration<ST, WT> {
 		private WorksetPlaceHolder(ExecutionEnvironment context, TypeInformation<WT> type) {
 			super(context, type);
 		}
+	}
+	
+	public int getCheckpointInterval() {
+		return this.checkpointInterval;
+	}
+	
+	public void setCheckpointInterval(int checkpointInterval) {
+		this.checkpointInterval = checkpointInterval;
 	}
 }

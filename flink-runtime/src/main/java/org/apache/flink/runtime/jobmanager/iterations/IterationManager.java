@@ -351,7 +351,8 @@ public class IterationManager {
 	 * from the last checkpoint
 	 */
 	public void initRecovery() {
-		if(initRerun.compareAndSet(false, true)) {	
+		
+		if(initRerun.compareAndSet(false, true)) {
 
 			// find iteration vertex
 			AbstractJobVertex iterationVertex = null;
@@ -388,6 +389,7 @@ public class IterationManager {
 			ClassLoader cl = this.libraryCacheManager.getClassLoader(jobId);
 
 			InputFormatVertex checkpoint;
+			InputFormatVertex checkpointSolutionSet = null;
 			try {
 				// create new checkpoint source to attach in front of the iteration
 				checkpoint = createCheckpointInput(jobGraph, checkpointPath+"_"+lastCheckpoint+"/", this.parallelism, 
@@ -395,9 +397,24 @@ public class IterationManager {
 						sourceConfig.getOutputShipStrategy(0), sourceConfig.getOutputComparator(0, cl),
 						sourceConfig.getOutputDataDistribution(0, cl), sourceConfig.getOutputPartitioner(0, cl));
 				
-				System.out.println("checkpointPath"+lastCheckpoint+"/");
-				
 				jobGraph.addVertex(checkpoint);
+				
+				// create second input for solution set
+				if(iterationTaskConfig.getIsWorksetIteration()) {
+					
+					sourceConfig = new TaskConfig(iterationVertex.getInputs().get(1).getSource().getProducer().getConfiguration());
+					if(sourceConfig.getNumberOfChainedStubs() > 0) {
+						sourceConfig = sourceConfig.getChainedStubConfig(0);
+					}
+					
+					String checkpointSolutionSetPath = RecoveryUtil.getCheckpointPath()+"deltacheckpoint_"+lastCheckpoint+"/";
+					checkpointSolutionSet = createCheckpointInput(jobGraph, checkpointSolutionSetPath, this.parallelism, 
+							iterationTaskConfig.getOutputSerializer(cl), iterationTaskConfig.getOutputType(1, cl), 
+							sourceConfig.getOutputShipStrategy(0), sourceConfig.getOutputComparator(0, cl),
+							sourceConfig.getOutputDataDistribution(0, cl), sourceConfig.getOutputPartitioner(0, cl));
+					
+					jobGraph.addVertex(checkpointSolutionSet);
+				}
 				
 				// remove everything before the iteration
 				for(JobEdge edge : iterationVertex.getInputs()) {
@@ -409,6 +426,11 @@ public class IterationManager {
 				
 				// connect checkpoint as new input
 				iterationVertex.connectNewDataSetAsInput(checkpoint, dp, rpt);
+				
+				// connect second input for solution set
+				if(iterationTaskConfig.getIsWorksetIteration()) {
+					iterationVertex.connectNewDataSetAsInput(checkpointSolutionSet, dp, rpt);
+				}
 				
 				iterationTaskConfig.setNumberOfIterations(maxNumberOfIterations - currentIteration + 1);		
 				
@@ -422,7 +444,6 @@ public class IterationManager {
 					if(v.getParallelism() == this.parallelism && this.parallelism > 1) {
 						v.setParallelism(v.getParallelism() - 1);
 					}
-					
 					
 					// re initialize
 					try {
@@ -450,7 +471,7 @@ public class IterationManager {
 				// adjust checkpoint vertices
 				for(IntermediateDataSet ds : iterationVertex.getProducedDataSets()) {
 					for(JobEdge e : ds.getConsumers()) {
-						if(e.getTarget().getName().contains("checkpoint")) {
+						if(e.getTarget().getName().toLowerCase().contains("checkpoint")) {
 							TaskConfig taskConfig = new TaskConfig(e.getTarget().getConfiguration());
 							taskConfig.setIterationRetry(retries);
 						}
