@@ -59,7 +59,6 @@ import org.apache.flink.runtime.jobgraph.InputFormatVertex;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSet;
 import org.apache.flink.runtime.jobgraph.JobEdge;
 import org.apache.flink.runtime.jobgraph.JobGraph;
-import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.jobmanager.JobManager;
 import org.apache.flink.runtime.jobmanager.accumulators.AccumulatorManager;
 import org.apache.flink.runtime.messages.JobManagerMessages;
@@ -501,11 +500,13 @@ public class IterationManager {
 								"Cannot initialize checkpoint task : " + t.getMessage(), t);
 						}
 					
+					TaskConfig vConfig = new TaskConfig(v.getConfiguration());
+					
 					// continue superstep where stopped
 					if(v.getClass().isAssignableFrom(AbstractIterativePactTask.class)) {
-						iterationTaskConfig.setStartIteration(lastCheckpoint);
-						iterationTaskConfig.setIterationRetry(retries);
+						vConfig.setStartIteration(lastCheckpoint);
 					}
+					vConfig.setIterationRetry(retries);
 				}
 				
 				// adjust state of this iteration manager
@@ -616,17 +617,14 @@ public class IterationManager {
 			TaskConfig taskConfig = new TaskConfig(pointsInput.getConfiguration());
 			taskConfig.addOutputShipStrategy(shipStrategy);
 			taskConfig.setOutputSerializer(serializer);
-			System.out.println(shipStrategy);
+
 			if(comparator != null) {
-				System.out.println(comparator);
 				taskConfig.setOutputComparator(comparator, 0);
 			}
 			if(dataDistribution != null) {
-				System.out.println(dataDistribution);
 				taskConfig.setOutputDataDistribution(dataDistribution, 0);
 			}
 			if(partitioner != null) {
-				System.out.println(partitioner);
 				taskConfig.setOutputPartitioner(partitioner, 0);
 			}
 		}

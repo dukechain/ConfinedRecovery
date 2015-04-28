@@ -133,7 +133,7 @@ public class DataSourceTask<OT> extends AbstractInvokable {
 			final Iterator<InputSplit> splitIterator = getInputSplits();
 			
 			// for each assigned input split
-			while (!this.taskCanceled && splitIterator.hasNext())
+			while (!this.taskCanceled && splitIterator.hasNext() && this.config.getIterationRetry() == 0)
 			{
 				// get start and end
 				final InputSplit split = splitIterator.next();
