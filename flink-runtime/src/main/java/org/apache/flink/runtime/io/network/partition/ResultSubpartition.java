@@ -18,10 +18,11 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
+import java.io.IOException;
+import java.net.InetSocketAddress;
+
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
-
-import java.io.IOException;
 
 /**
  * A single subpartition of a {@link ResultPartition} instance.
@@ -76,5 +77,4 @@ public abstract class ResultSubpartition {
 	abstract public ResultSubpartitionView createReadView(BufferProvider bufferProvider) throws IOException;
 
 	abstract int releaseMemory() throws IOException;
-
 }

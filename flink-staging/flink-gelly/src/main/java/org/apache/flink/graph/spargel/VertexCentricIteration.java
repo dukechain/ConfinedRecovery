@@ -24,17 +24,24 @@ import java.util.Iterator;
 import java.util.List;
 
 import org.apache.commons.lang3.Validate;
+import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.RichCoGroupFunction;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.DataSet;
+import org.apache.flink.api.java.ExecutionEnvironment;
+import org.apache.flink.api.java.Utils;
+import org.apache.flink.api.java.io.CsvInputFormat;
 import org.apache.flink.api.java.operators.CoGroupOperator;
 import org.apache.flink.api.java.operators.CustomUnaryOperation;
+import org.apache.flink.api.java.operators.DataSource;
 import org.apache.flink.api.java.operators.IterativeDataSet;
+import org.apache.flink.api.java.tuple.Tuple1;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
 import org.apache.flink.api.java.typeutils.TupleTypeInfo;
 import org.apache.flink.api.java.typeutils.TypeExtractor;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.core.fs.Path;
 import org.apache.flink.graph.Edge;
 import org.apache.flink.graph.Vertex;
 import org.apache.flink.util.Collector;
@@ -311,6 +318,10 @@ public class VertexCentricIteration<VertexKey extends Comparable<VertexKey> & Se
 		}
 		
 		VertexUpdateUdf<VertexKey, VertexValue, Message> updateUdf = new VertexUpdateUdf<VertexKey, VertexValue, Message>(updateFunction, vertexTypes, true);
+		
+//		messages.writeAsCsv("file:/c:/temp/1");
+//		
+//		DataSet<Tuple2<VertexKey, Message>> messages2 = messages.union(messages);
 		
 		// build the update function (co group)
 		CoGroupOperator<?, ?, Vertex<VertexKey, VertexValue>> updates =

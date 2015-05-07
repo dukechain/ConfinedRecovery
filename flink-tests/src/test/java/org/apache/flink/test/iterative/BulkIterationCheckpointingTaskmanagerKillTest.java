@@ -26,10 +26,10 @@ import akka.util.Timeout;
 import org.apache.commons.io.FileUtils;
 import org.apache.flink.api.common.ExecutionMode;
 import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.ExecutionEnvironment;
-import org.apache.flink.api.java.aggregation.Aggregations;
 import org.apache.flink.api.java.operators.IterativeDataSet;
 import org.apache.flink.api.java.tuple.Tuple1;
 import org.apache.flink.configuration.ConfigConstants;
@@ -291,6 +291,13 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 				record.f0 += 100;
 				return record;
 			}
+		}).groupBy(0).reduce(new ReduceFunction<Tuple1<Integer>>() {
+			
+			@Override
+			public Tuple1<Integer> reduce(Tuple1<Integer> value1, Tuple1<Integer> value2)
+					throws Exception {
+				return value1;
+			}
 		});
 		
 		iteration.closeWith(result).writeAsCsv("file:/c:/temp/result");//.print();
@@ -416,7 +423,7 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 				Configuration cfg = new Configuration();
 				cfg.setString(ConfigConstants.JOB_MANAGER_IPC_ADDRESS_KEY, "localhost");
 				cfg.setInteger(ConfigConstants.JOB_MANAGER_IPC_PORT_KEY, jobManagerPort);
-				cfg.setInteger(ConfigConstants.TASK_MANAGER_MEMORY_SIZE_KEY, 4);
+				cfg.setInteger(ConfigConstants.TASK_MANAGER_MEMORY_SIZE_KEY, 20);
 				cfg.setInteger(ConfigConstants.TASK_MANAGER_NETWORK_NUM_BUFFERS_KEY, 100);
 				cfg.setInteger(ConfigConstants.TASK_MANAGER_NUM_TASK_SLOTS, 6);
 

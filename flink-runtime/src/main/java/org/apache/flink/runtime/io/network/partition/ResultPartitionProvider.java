@@ -18,9 +18,9 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
-import org.apache.flink.runtime.io.network.buffer.BufferProvider;
-
 import java.io.IOException;
+
+import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 
 public interface ResultPartitionProvider {
 

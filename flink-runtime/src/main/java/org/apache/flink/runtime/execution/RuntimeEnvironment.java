@@ -133,7 +133,8 @@ public class RuntimeEnvironment implements Environment, Runnable {
 						networkEnvironment.getPartitionManager(),
 						networkEnvironment.getPartitionConsumableNotifier(),
 						ioManager,
-						networkEnvironment.getDefaultIOMode());
+						networkEnvironment.getDefaultIOMode(),
+						desc.getResultId());
 
 				writers[i] = new ResultPartitionWriter(this.producedPartitions[i]);
 			}
@@ -434,5 +435,9 @@ public class RuntimeEnvironment implements Environment, Runnable {
 	@Override
 	public Map<String, FutureTask<Path>> getCopyTask() {
 		return cacheCopyTasks;
+	}
+	
+	public ActorRef getTaskmanager() {
+		return this.owner.getTaskManager();
 	}
 }

@@ -18,19 +18,21 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
+import java.net.InetSocketAddress;
+
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
+
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.buffer.NetworkBufferPool;
+import org.apache.flink.runtime.io.network.netty.NettyMessage.PartitionRequest;
+import org.apache.flink.runtime.io.network.netty.NettyMessage.TaskEventRequest;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionProvider;
 import org.apache.flink.runtime.io.network.partition.ResultSubpartitionView;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import static org.apache.flink.runtime.io.network.netty.NettyMessage.PartitionRequest;
-import static org.apache.flink.runtime.io.network.netty.NettyMessage.TaskEventRequest;
 
 class PartitionRequestServerHandler extends SimpleChannelInboundHandler<NettyMessage> {
 
@@ -92,6 +94,13 @@ class PartitionRequestServerHandler extends SimpleChannelInboundHandler<NettyMes
 								request.partitionId,
 								request.queueIndex,
 								bufferPool);
+								//(InetSocketAddress) ctx.channel().remoteAddress());
+				
+				
+				// HERE
+//				ResultPartition partition = registeredPartitions.get(partitionId.getProducerId(),
+//						partitionId.getPartitionId());
+//				ctx.channel().remoteAddress();
 
 				if (queueIterator != null) {
 					outboundQueue.enqueue(queueIterator, request.receiverId);

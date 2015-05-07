@@ -399,11 +399,13 @@ public class BulkIterationNode extends SingleInputNode implements IterationNode 
 					}
 				}
 				
-				BulkIterationPlanNode node = new BulkIterationPlanNode(this, "BulkIteration ("+this.getOperator().getName()+")", in, pspn, candidate, iterationSinksCompatible);
-				GlobalProperties gProps = candidate.getGlobalProperties().clone();
-				LocalProperties lProps = candidate.getLocalProperties().clone();
-				node.initProperties(gProps, lProps);
-				target.add(node);
+				if(iterationSinksCompatible.size() == this.iterationSinks.size()) {
+					BulkIterationPlanNode node = new BulkIterationPlanNode(this, "BulkIteration ("+this.getOperator().getName()+")", in, pspn, candidate, iterationSinksCompatible);
+					GlobalProperties gProps = candidate.getGlobalProperties().clone();
+					LocalProperties lProps = candidate.getLocalProperties().clone();
+					node.initProperties(gProps, lProps);
+					target.add(node);
+				}
 			}
 		}
 		else if (candidates.size() > 0) {

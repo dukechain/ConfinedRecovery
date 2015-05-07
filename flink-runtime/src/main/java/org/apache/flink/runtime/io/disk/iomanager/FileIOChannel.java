@@ -87,7 +87,7 @@ public interface FileIOChannel {
 		
 		private static final int RANDOM_BYTES_LENGTH = 16;
 		
-		private final File path;
+		private File path;
 		
 		private final int threadNum;
 
@@ -107,6 +107,10 @@ public interface FileIOChannel {
 		 */
 		public String getPath() {
 			return path.getAbsolutePath();
+		}
+		
+		public void setPath(File path) {
+			this.path = path;
 		}
 
 		/**

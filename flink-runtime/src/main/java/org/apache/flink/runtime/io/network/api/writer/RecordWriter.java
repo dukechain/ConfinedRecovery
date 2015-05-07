@@ -18,15 +18,29 @@
 
 package org.apache.flink.runtime.io.network.api.writer;
 
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.apache.flink.api.common.io.FileOutputFormat.OutputDirectoryMode;
+import org.apache.flink.api.java.io.CsvOutputFormat;
+import org.apache.flink.api.java.tuple.Tuple;
+import org.apache.flink.core.fs.Path;
+import org.apache.flink.core.fs.FileSystem.WriteMode;
 import org.apache.flink.core.io.IOReadableWritable;
 import org.apache.flink.runtime.event.task.AbstractEvent;
+import org.apache.flink.runtime.io.disk.iomanager.BufferFileWriter;
+import org.apache.flink.runtime.io.disk.iomanager.IOManager;
+import org.apache.flink.runtime.io.disk.iomanager.IOManagerAsync;
 import org.apache.flink.runtime.io.network.api.serialization.RecordSerializer;
+import org.apache.flink.runtime.io.network.api.serialization.RecordSerializer.SerializationResult;
 import org.apache.flink.runtime.io.network.api.serialization.SpanningRecordSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
-
-import java.io.IOException;
-
-import static org.apache.flink.runtime.io.network.api.serialization.RecordSerializer.SerializationResult;
+import org.apache.flink.runtime.iterative.task.IterationHeadPactTask;
+import org.apache.flink.runtime.plugable.SerializationDelegate;
 
 /**
  * A record-oriented runtime result writer.
@@ -48,9 +62,23 @@ public class RecordWriter<T extends IOReadableWritable> {
 	private final ChannelSelector<T> channelSelector;
 
 	private final int numChannels;
+	
+	private CsvOutputFormat<Tuple>[] logOutput = null;
 
 	/** {@link RecordSerializer} per outgoing channel */
 	private final RecordSerializer<T>[] serializers;
+	
+	private double rand = Math.random();
+	
+	BufferFileWriter spillWriter;
+	
+	IOManager ioManager;
+	
+	public static ConcurrentHashMap<Integer, List> checkpointTmp =
+			new ConcurrentHashMap<Integer, List>();
+	
+	public static ConcurrentHashMap<InetSocketAddress, List> checkpoint =
+			new ConcurrentHashMap<InetSocketAddress, List>();
 
 	public RecordWriter(ResultPartitionWriter writer) {
 		this(writer, new RoundRobinChannelSelector<T>());
@@ -72,10 +100,86 @@ public class RecordWriter<T extends IOReadableWritable> {
 		for (int i = 0; i < numChannels; i++) {
 			serializers[i] = new SpanningRecordSerializer<T>();
 		}
+		
+		logOutput = new CsvOutputFormat[writer.getPartition().getNumberOfSubpartitions()];
+		
+		this.ioManager = new IOManagerAsync();
 	}
 
 	public void emit(T record) throws IOException, InterruptedException {
 		for (int targetChannel : channelSelector.selectChannels(record, numChannels)) {
+			
+			// CONFINED CHECKPOINTING
+			// check if writing to remote channel
+//			InetSocketAddress remote = writer.getPartition().getRemote(targetChannel);
+//			if(remote == null) {
+//				if(checkpointTmp.containsKey(targetChannel)) {
+//					checkpointTmp.get(targetChannel).add(record);
+//				}
+//				else {
+//					List<T> l = Collections.synchronizedList(new ArrayList<T>());
+//					l.add(record);
+//					checkpointTmp.put(targetChannel, l);
+//				}
+//			}
+//			else if(remote.getHostName().contains("localhost")) {
+//				checkpointTmp.get(targetChannel).clear();
+//			}
+//			else if(remote.getHostName() != "localhost") {
+//				if(checkpoint.containsKey(remote)) {
+//					checkpoint.get(targetChannel).add(remote);
+//				}
+//				else {
+//					List<T> l = Collections.synchronizedList(new ArrayList<T>());
+//					l.add(record);
+//					l.addAll(checkpointTmp.get(targetChannel));
+//					checkpointTmp.get(targetChannel).clear();
+//					checkpoint.put(remote, l);
+//				}
+//			}
+			
+			if((logOutput[0] == null && writer.getPartition().getNumberOfSubpartitions() > 1 && IterationHeadPactTask.SUPERSTEP.get() > -1) || (logOutput[0] != null 
+					&& !logOutput[0].getOutputFilePath().toString().endsWith("_"+IterationHeadPactTask.SUPERSTEP.get()))) {
+				
+				for(int i = 0; i < writer.getPartition().getNumberOfSubpartitions(); i++) {
+//					if(logOutput[i] != null) {
+//						logOutput[i].close();
+//					}
+
+					logOutput[i] = new CsvOutputFormat(new Path("file:/c:/temp/test2/"+rand+"/"+writer.getIntermediateDataSetID()+"_"+i+"_"+IterationHeadPactTask.SUPERSTEP.get()));
+					logOutput[i].setWriteMode(WriteMode.OVERWRITE);
+					logOutput[i].setOutputDirectoryMode(OutputDirectoryMode.PARONLY);
+					try {
+						logOutput[i].open(1, 1);
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				}
+			}
+			
+			
+			if(logOutput != null && writer.getPartition().getNumberOfSubpartitions() > 1 && IterationHeadPactTask.SUPERSTEP.get() > -1) {
+				if(record instanceof SerializationDelegate) {
+					SerializationDelegate<T> sd = (SerializationDelegate<T>) record;
+					logOutput[targetChannel].writeRecord((Tuple) sd.getInstance());
+				}
+			}
+			
+			
+//			if((spillWriter == null && writer.getPartition().getNumberOfSubpartitions() > 1 && IterationHeadPactTask.SUPERSTEP.get() > -1) || (spillWriter != null 
+//					&& !spillWriter.getChannelID().getPath().endsWith("_"+IterationHeadPactTask.SUPERSTEP.get()))) {
+//				try {
+//					spillWriter = ioManager.createBufferFileWriter(
+//							ioManager.createChannel(
+//									"c:/temp/test3/"+writer.getPartition().getPartitionId().getPartitionId()+"."+targetChannel +"_"+IterationHeadPactTask.SUPERSTEP.get()));
+//				} catch (IOException e) {
+//					// TODO Auto-generated catch block
+//					e.printStackTrace();
+//				}
+//			}
+			
+			
 			// serialize with corresponding serializer and send full buffer
 			RecordSerializer<T> serializer = serializers[targetChannel];
 
@@ -83,6 +187,17 @@ public class RecordWriter<T extends IOReadableWritable> {
 				SerializationResult result = serializer.addRecord(record);
 				while (result.isFullBuffer()) {
 					Buffer buffer = serializer.getCurrentBuffer();
+					
+					// logging
+//					if(spillWriter != null && writer.getPartition().getNumberOfSubpartitions() > 1 && IterationHeadPactTask.SUPERSTEP.get() > -1) {
+//						try {
+//							buffer.retain();
+//							spillWriter.writeBlock(buffer);
+//						} catch (IOException e) {
+//							// TODO Auto-generated catch block
+//							e.printStackTrace();
+//						}
+//					}
 
 					if (buffer != null) {
 						writer.writeBuffer(buffer, targetChannel);
@@ -149,6 +264,15 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 				if (buffer != null) {
 					writer.writeBuffer(buffer, targetChannel);
+				}
+			}
+		}
+		
+		if(logOutput[0] != null) {
+			
+			for(int i = 0; i < writer.getPartition().getNumberOfSubpartitions(); i++) {
+				if(logOutput[i] != null) {
+					logOutput[i].close();
 				}
 			}
 		}

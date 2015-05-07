@@ -168,6 +168,11 @@ public abstract class IOManager {
 		final int num = getNextPathNum();
 		return new FileIOChannel.ID(this.paths[num], num, this.random);
 	}
+	
+	public FileIOChannel.ID createChannel(String path) {
+		final int num = getNextPathNum();
+		return new FileIOChannel.ID(new File(path), num);
+	}
 
 	/**
 	 * Creates a new {@link FileIOChannel.Enumerator}, spreading the channels in a round-robin fashion

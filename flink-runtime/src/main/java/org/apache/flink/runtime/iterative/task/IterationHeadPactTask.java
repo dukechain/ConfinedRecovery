@@ -24,6 +24,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.flink.api.common.accumulators.Accumulator;
 import org.apache.flink.api.common.accumulators.LongCounter;
@@ -61,6 +62,7 @@ import org.apache.flink.runtime.operators.hash.CompactingHashTable;
 import org.apache.flink.runtime.operators.util.TaskConfig;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.MutableObjectIterator;
+import org.apache.hadoop.yarn.webapp.hamlet.Hamlet.SUP;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -111,6 +113,8 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 
 	private RuntimeAccumulatorRegistry accumulatorRegistry;
 	private Map<String, Accumulator<?, ?>> lastGlobalState = null;
+	
+	public static AtomicInteger SUPERSTEP = new AtomicInteger(-1);
 	
 	// --------------------------------------------------------------------------------------------
 
@@ -342,6 +346,8 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 			}
 
 			DataInputView superstepResult = null;
+			
+			SUPERSTEP.set(1);
 
 			while (this.running && !terminationRequested()) {
 
@@ -359,37 +365,37 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 				}
 				
 				// CHECKPOINT SOLUTION SET
-				if(isWorksetIteration) {
-					String pathName = config.getIterationHeadCheckpointPath();
-					pathName += "deltacheckpoint_"+this.currentIteration()+"/";
-					
-					final FileOutputFormat format = new CsvOutputFormat(new Path(pathName));
-					format.setWriteMode(WriteMode.OVERWRITE);
-					format.setOutputDirectoryMode(OutputDirectoryMode.PARONLY);
-					SolutionSetBroker.instance().get(brokerKey);
-					
-					format.open(this.getEnvironment().getIndexInSubtaskGroup(), this.getEnvironment().getNumberOfSubtasks());
-					
-					if (objectSolutionSet) {
-						JoinHashMap<X> solutionSetTemp = (JoinHashMap<X>) SolutionSetBroker.instance().get(brokerKey);
-						X item;
-						Iterator it = solutionSetTemp.entrySet().iterator();
-						while(solutionSetTemp.entrySet().iterator().hasNext()) {
-							item = (X) solutionSetTemp.entrySet().iterator().next();
-							format.writeRecord(item);
-						}
-					} else {
-						CompactingHashTable<X> solutionSetTemp = (CompactingHashTable<X>) SolutionSetBroker.instance().get(brokerKey);
-						MutableObjectIterator<X> it = solutionSetTemp.getEntryIterator();
-						X item = it.next();
-						while(item != null) {
-							format.writeRecord(item);
-							item = it.next();
-						}
-					}
-					
-					format.close();
-				}
+//				if(isWorksetIteration) {
+//					String pathName = config.getIterationHeadCheckpointPath();
+//					pathName += "deltacheckpoint_"+this.currentIteration()+"/";
+//					
+//					final FileOutputFormat format = new CsvOutputFormat(new Path(pathName));
+//					format.setWriteMode(WriteMode.OVERWRITE);
+//					format.setOutputDirectoryMode(OutputDirectoryMode.PARONLY);
+//					SolutionSetBroker.instance().get(brokerKey);
+//					
+//					format.open(this.getEnvironment().getIndexInSubtaskGroup(), this.getEnvironment().getNumberOfSubtasks());
+//					
+//					if (objectSolutionSet) {
+//						JoinHashMap<X> solutionSetTemp = (JoinHashMap<X>) SolutionSetBroker.instance().get(brokerKey);
+//						X item;
+//						Iterator it = solutionSetTemp.entrySet().iterator();
+//						while(solutionSetTemp.entrySet().iterator().hasNext()) {
+//							item = (X) solutionSetTemp.entrySet().iterator().next();
+//							format.writeRecord(item);
+//						}
+//					} else {
+//						CompactingHashTable<X> solutionSetTemp = (CompactingHashTable<X>) SolutionSetBroker.instance().get(brokerKey);
+//						MutableObjectIterator<X> it = solutionSetTemp.getEntryIterator();
+//						X item = it.next();
+//						while(item != null) {
+//							format.writeRecord(item);
+//							item = it.next();
+//						}
+//					}
+//					
+//					format.close();
+//				}
 
 				super.run();
 
@@ -453,11 +459,13 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 					lastGlobalState = null;
 
 					nextStepKickoff.triggerNextSuperstep();
+					SUPERSTEP.set(this.currentIteration());
 				}
 				else if (result instanceof JobManagerMessages.InitIterationTermination) {
 					
 					requestTermination();
 					nextStepKickoff.signalTermination();
+					SUPERSTEP.set(-1);
 				}
 				else {
 					throw new RuntimeException("Unknown message type for iteration handling");

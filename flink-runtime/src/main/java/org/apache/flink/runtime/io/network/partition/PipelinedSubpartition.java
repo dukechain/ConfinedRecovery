@@ -18,14 +18,20 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
+import org.apache.flink.runtime.io.disk.iomanager.BufferFileWriter;
+import org.apache.flink.runtime.io.disk.iomanager.IOManager;
+import org.apache.flink.runtime.io.disk.iomanager.IOManager.IOMode;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
+import org.apache.flink.runtime.iterative.task.IterationHeadPactTask;
 import org.apache.flink.runtime.util.event.NotificationListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayDeque;
 
 import static com.google.common.base.Preconditions.checkNotNull;
@@ -54,9 +60,18 @@ class PipelinedSubpartition extends ResultSubpartition {
 
 	/** All buffers of this subpartition. Access to the buffers is synchronized on this object. */
 	final ArrayDeque<Buffer> buffers = new ArrayDeque<Buffer>();
-
+	
+	BufferFileWriter spillWriter;
+	
+	IOManager ioManager;
+	
 	PipelinedSubpartition(int index, ResultPartition parent) {
 		super(index, parent);
+	}
+
+	PipelinedSubpartition(int index, ResultPartition parent, IOManager ioManager, IOMode ioMode) {
+		super(index, parent);
+		this.ioManager = ioManager;
 	}
 
 	@Override
@@ -69,6 +84,29 @@ class PipelinedSubpartition extends ResultSubpartition {
 			if (isReleased || isFinished) {
 				return false;
 			}
+			
+//			if((spillWriter == null && parent.getNumberOfSubpartitions() > 1 && IterationHeadPactTask.SUPERSTEP.get() > -1) || (spillWriter != null 
+//					&& !spillWriter.getChannelID().getPath().endsWith("_"+IterationHeadPactTask.SUPERSTEP.get()))) {
+//				try {
+//					spillWriter = ioManager.createBufferFileWriter(
+//							ioManager.createChannel(
+//									"c:/temp/test/"+parent.getPartitionId().getPartitionId()+"."+index +"_"+IterationHeadPactTask.SUPERSTEP.get()));
+//				} catch (IOException e) {
+//					// TODO Auto-generated catch block
+//					e.printStackTrace();
+//				}
+//			}
+//			
+//			// logging
+//			if(spillWriter != null && parent.getNumberOfSubpartitions() > 1 && IterationHeadPactTask.SUPERSTEP.get() > -1) {
+//				try {
+//					buffer.retain();
+//					spillWriter.writeBlock(buffer);
+//				} catch (IOException e) {
+//					// TODO Auto-generated catch block
+//					e.printStackTrace();
+//				}
+//			}
 
 			// Add the buffer and update the stats
 			buffers.add(buffer);

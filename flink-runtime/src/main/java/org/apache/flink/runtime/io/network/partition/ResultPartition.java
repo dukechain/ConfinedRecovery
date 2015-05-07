@@ -18,6 +18,16 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.executiongraph.IntermediateResultPartition;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager.IOMode;
@@ -28,18 +38,10 @@ import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 import org.apache.flink.runtime.io.network.partition.consumer.LocalInputChannel;
 import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
-import org.apache.flink.api.common.JobID;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.taskmanager.TaskManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
 
 /**
  * A result partition for data produced by a single task.
@@ -79,6 +81,8 @@ public class ResultPartition implements BufferPoolOwner {
 	private final JobID jobId;
 
 	private final ResultPartitionID partitionId;
+	
+	private final IntermediateDataSetID intermediateDataSetId;
 
 	/** Type of this partition. Defines the concrete subpartition implementation to use. */
 	private final ResultPartitionType partitionType;
@@ -123,7 +127,8 @@ public class ResultPartition implements BufferPoolOwner {
 			ResultPartitionManager partitionManager,
 			ResultPartitionConsumableNotifier partitionConsumableNotifier,
 			IOManager ioManager,
-			IOMode defaultIoMode) {
+			IOMode defaultIoMode,
+			IntermediateDataSetID intermediateDataSetId) {
 
 		this.jobId = checkNotNull(jobId);
 		this.partitionId = checkNotNull(partitionId);
@@ -131,6 +136,7 @@ public class ResultPartition implements BufferPoolOwner {
 		this.subpartitions = new ResultSubpartition[numberOfSubpartitions];
 		this.partitionManager = checkNotNull(partitionManager);
 		this.partitionConsumableNotifier = checkNotNull(partitionConsumableNotifier);
+		this.intermediateDataSetId = intermediateDataSetId;
 
 		// Create the subpartitions.
 		switch (partitionType) {
@@ -144,7 +150,7 @@ public class ResultPartition implements BufferPoolOwner {
 
 			case PIPELINED:
 				for (int i = 0; i < subpartitions.length; i++) {
-					subpartitions[i] = new PipelinedSubpartition(i, this);
+					subpartitions[i] = new PipelinedSubpartition(i, this, ioManager, defaultIoMode);
 				}
 
 				break;
@@ -204,6 +210,10 @@ public class ResultPartition implements BufferPoolOwner {
 
 	public long getTotalNumberOfBytes() {
 		return totalNumberOfBytes;
+	}
+	
+	public IntermediateDataSetID getIntermediateDataSetID() {
+		return intermediateDataSetId;
 	}
 
 	// ------------------------------------------------------------------------

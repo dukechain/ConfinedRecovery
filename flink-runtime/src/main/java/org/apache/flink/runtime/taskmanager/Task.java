@@ -436,4 +436,8 @@ public class Task {
 	public String toString() {
 		return getTaskNameWithSubtasks() + " [" + executionState + ']';
 	}
+	
+	public ActorRef getTaskManager() {
+		return this.taskManager;
+	}
 }
