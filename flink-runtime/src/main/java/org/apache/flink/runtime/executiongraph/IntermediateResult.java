@@ -45,12 +45,15 @@ public class IntermediateResult {
 	private final int connectionIndex;
 
 	private final ResultPartitionType resultType;
+	
+	private final int rand;
 
 	public IntermediateResult(
 			IntermediateDataSetID id,
 			ExecutionJobVertex producer,
 			int numParallelProducers,
-			ResultPartitionType resultType) {
+			ResultPartitionType resultType,
+			int rand) {
 
 		this.id = checkNotNull(id);
 		this.producer = checkNotNull(producer);
@@ -68,6 +71,8 @@ public class IntermediateResult {
 
 		// The runtime type for this produced result
 		this.resultType = checkNotNull(resultType);
+		
+		this.rand = rand;
 	}
 
 	public void setPartition(int partitionNumber, IntermediateResultPartition partition) {
@@ -139,5 +144,9 @@ public class IntermediateResult {
 	@Override
 	public String toString() {
 		return "IntermediateResult " + id.toString();
+	}
+
+	public int getRand() {
+		return rand;
 	}
 }

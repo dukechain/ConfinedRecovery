@@ -27,8 +27,12 @@ import org.apache.flink.api.common.accumulators.LongCounter;
 import org.apache.flink.api.common.functions.Function;
 import org.apache.flink.api.common.functions.IterationRuntimeContext;
 import org.apache.flink.api.common.operators.util.JoinHashMap;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.TypeSerializerFactory;
+import org.apache.flink.api.java.io.CsvInputFormat;
+import org.apache.flink.core.fs.FileInputSplit;
+import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.io.IOReadableWritable;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.runtime.execution.Environment;
@@ -140,6 +144,10 @@ public abstract class AbstractIterativePactTask<S extends Function, OT> extends 
 				readAndSetBroadcastInput(i, name, this.runtimeUdfContext, superstepNum, true);
 			}
 		}
+		
+		
+		// infuse records during refined recovery?
+		infuseRecoveryRecords();
 
 		// call the parent to execute the superstep
 		super.run();
@@ -180,7 +188,7 @@ public abstract class AbstractIterativePactTask<S extends Function, OT> extends 
 	// --------------------------------------------------------------------------------------------
 
 	protected boolean inFirstIteration() {
-		return this.superstepNum == 1;
+		return this.superstepNum == 1 || this.superstepNum == this.config.getStartIteration();
 	}
 
 	protected int currentIteration() {
@@ -370,6 +378,35 @@ public abstract class AbstractIterativePactTask<S extends Function, OT> extends 
 		}
 
 		return serializerFactory.getSerializer();
+	}
+	
+	protected void infuseRecoveryRecords() throws ClassNotFoundException, IOException {
+		
+		if(this.config.getRefinedRecoveryStart() <= currentIteration() &&
+				this.config.getRefinedRecoveryEnd() >= currentIteration()) {
+		
+			TypeInformation<OT> ti = (TypeInformation<OT>) this.config.getOutputType(1, getUserCodeClassLoader());
+			if(this.config.getInfusedOutputPath() != "") {
+				
+				String infusePath = this.config.getInfusedOutputPath();
+				
+				CsvInputFormat<OT>  csvinfusing = new CsvInputFormat<OT>(new Path(
+						infusePath.replaceAll("%ITERATION%", ""+this.currentIteration())), ti);
+				
+				System.out.println("infused "+infusePath.replaceAll("%ITERATION%", ""+this.currentIteration()));
+				
+				for(FileInputSplit fis : csvinfusing.createInputSplits(1)) {
+					csvinfusing.open(fis);
+					OT record = ti.createSerializer(getExecutionConfig()).createInstance();
+					while(!csvinfusing.reachedEnd()) {
+						if((record = csvinfusing.nextRecord(record)) != null) {
+							System.out.println("infused "+record);
+							this.output.collect(record);
+						}
+					}
+				}
+			}
+		}
 	}
 
 	// -----------------------------------------------------------------------------------------------------------------

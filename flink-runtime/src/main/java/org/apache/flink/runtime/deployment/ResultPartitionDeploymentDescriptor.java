@@ -18,16 +18,16 @@
 
 package org.apache.flink.runtime.deployment;
 
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+
+import java.io.Serializable;
+
 import org.apache.flink.runtime.executiongraph.IntermediateResultPartition;
 import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
-
-import java.io.Serializable;
-
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * Deployment descriptor for a result partition.
@@ -47,12 +47,15 @@ public class ResultPartitionDeploymentDescriptor implements Serializable {
 
 	/** The number of subpartitions. */
 	private final int numberOfSubpartitions;
+	
+	private final int ownQueueToRequest;
 
 	public ResultPartitionDeploymentDescriptor(
 			IntermediateDataSetID resultId,
 			IntermediateResultPartitionID partitionId,
 			ResultPartitionType partitionType,
-			int numberOfSubpartitions) {
+			int numberOfSubpartitions,
+			int ownQueueToRequest) {
 
 		this.resultId = checkNotNull(resultId);
 		this.partitionId = checkNotNull(partitionId);
@@ -60,6 +63,7 @@ public class ResultPartitionDeploymentDescriptor implements Serializable {
 
 		checkArgument(numberOfSubpartitions >= 1);
 		this.numberOfSubpartitions = numberOfSubpartitions;
+		this.ownQueueToRequest = ownQueueToRequest;
 	}
 
 	public IntermediateDataSetID getResultId() {
@@ -87,7 +91,7 @@ public class ResultPartitionDeploymentDescriptor implements Serializable {
 
 	// ------------------------------------------------------------------------
 
-	public static ResultPartitionDeploymentDescriptor from(IntermediateResultPartition partition) {
+	public static ResultPartitionDeploymentDescriptor from(IntermediateResultPartition partition, int ownQueueToRequest) {
 
 		final IntermediateDataSetID resultId = partition.getIntermediateResult().getId();
 		final IntermediateResultPartitionID partitionId = partition.getPartitionId();
@@ -109,6 +113,10 @@ public class ResultPartitionDeploymentDescriptor implements Serializable {
 		}
 
 		return new ResultPartitionDeploymentDescriptor(
-				resultId, partitionId, partitionType, numberOfSubpartitions);
+				resultId, partitionId, partitionType, numberOfSubpartitions, ownQueueToRequest);
+	}
+
+	public int getOwnQueueToRequest() {
+		return ownQueueToRequest;
 	}
 }

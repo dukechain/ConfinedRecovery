@@ -140,6 +140,8 @@ public class TaskConfig implements Serializable {
 	private static final String OUTPUT_PARTITIONER = "out.partitioner.";
 	
 	private static final String OUTPUT_TYPE = "out.type.";
+
+	private static final String INFUSED_OUTPUT = "out.infused.source.path.";
 	
 	// ------------------------------------- Chaining ---------------------------------------------
 	
@@ -214,6 +216,17 @@ public class TaskConfig implements Serializable {
 	private static final String ITERATION_WORKSET_UPDATE = "iterative.ws-update";
 	
 	private static final String SOLUTION_SET_OBJECTS = "itertive.ss.obj";
+	
+	
+	
+	
+	private static final String REFINED_RECORY_START = "refined.recovery.start";
+	
+	private static final String REFINED_RECORY_END = "refined.recovery.end";
+	
+	private static final String REFINED_RECORY_OLD_DOP = "refined.recovery.old.dop";
+	
+	private static final String REFINED_RECORY_LOST_NODE = "refined.recovery.lost.node";
 
 	// ---------------------------------- Miscellaneous -------------------------------------------
 	
@@ -798,6 +811,14 @@ public class TaskConfig implements Serializable {
 		return this.config.getString(ITERATION_HEAD_CHECKPOINT_PATH, "");
 	}
 	
+	public void setInfusedOutputPath(String path) {
+		this.config.setString(INFUSED_OUTPUT, path);
+	}
+	
+	public String getInfusedOutputPath() {
+		return this.config.getString(INFUSED_OUTPUT, "");
+	}
+	
 	public void setIterationHeadPartialSolutionOrWorksetInputIndex(int inputIndex) {
 		if (inputIndex < 0) {
 			throw new IllegalArgumentException();
@@ -1123,6 +1144,39 @@ public class TaskConfig implements Serializable {
 	public boolean isSolutionSetUnmanaged() {
 		return config.getBoolean(SOLUTION_SET_OBJECTS, false);
 	}
+	
+	public void setRefinedRecoveryStart(int refinedRecveryStart) {
+		this.config.setInteger(REFINED_RECORY_START, refinedRecveryStart);
+	}
+	
+	public void setRefinedRecoveryEnd(int refinedRecoveryEnd) {
+		this.config.setInteger(REFINED_RECORY_END, refinedRecoveryEnd);
+	}
+	
+	public void setRefinedRecoveryOldDop(int refinedRecoveryOldDop) {
+		this.config.setInteger(REFINED_RECORY_OLD_DOP, refinedRecoveryOldDop);
+	}
+	
+	public void setRefinedRecoveryLostNode(int refinedRecoveryLostNode) {
+		this.config.setInteger(REFINED_RECORY_LOST_NODE, refinedRecoveryLostNode);
+	}
+	
+	public int getRefinedRecoveryStart() {
+		return this.config.getInteger(REFINED_RECORY_START, -1);
+	}
+	
+	public int getRefinedRecoveryEnd() {
+		return this.config.getInteger(REFINED_RECORY_END, -1);
+	}
+	
+	public int getRefinedRecoveryOldDop() {
+		return this.config.getInteger(REFINED_RECORY_OLD_DOP, -1);
+	}
+	
+	public int getRefinedRecoveryLostNode() {
+		return this.config.getInteger(REFINED_RECORY_LOST_NODE, -1);
+	}
+	
 	
 	// --------------------------------------------------------------------------------------------
 	//                          Utility class for nested Configurations

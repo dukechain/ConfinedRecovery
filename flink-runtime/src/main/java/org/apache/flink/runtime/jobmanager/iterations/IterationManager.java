@@ -182,7 +182,6 @@ public class IterationManager {
 		if(checkpoint) {
 			synchronized (nextCheckpoint) {
 				if(nextCheckpoint != currentIteration) {
-					lastCheckpoint = nextCheckpoint;
 					nextCheckpoint = currentIteration;
 				}
 			}
@@ -200,6 +199,11 @@ public class IterationManager {
 	 * If not it initializes the next superstep by sending an AllWorkersDoneEvent (with aggregators) to all workers.
 	 */
 	private void handleEndOfSuperstep() {
+		
+		synchronized (nextCheckpoint) {
+				lastCheckpoint = nextCheckpoint;
+		}
+		
 		if (log.isInfoEnabled()) {
 			log.info("finishing iteration [" + currentIteration + "]");
 		}
@@ -389,6 +393,8 @@ public class IterationManager {
 				checkpointPath += retries;
 			}
 			
+			checkpointPath += "_"+lastCheckpoint+"/";
+			
 			// save distribution pattern
 			DistributionPattern dp = iterationVertex.getInputs().get(0).getDistributionPattern();
 			ResultPartitionType rpt = iterationVertex.getInputs().get(0).getSource().getResultType();
@@ -409,13 +415,33 @@ public class IterationManager {
 
 			InputFormatVertex checkpoint;
 			InputFormatVertex checkpointSolutionSet = null;
+			boolean refinedRecovery = true;
 			try {
 				
 				// have to create new checkpoint source?
 				if(anyRegularOutput) {
+					
+					
+					// used to only read checkpointed partition during refined recovery
+					if(refinedRecovery) {
+						ExecutionJobVertex ejv = eg.getJobVertex(iterationVertex.getID());
+						for(ExecutionVertex ev :  ejv.getTaskVertices())  {
+							if(ev.getCurrentExecutionAttempt().getAssignedResource() != null &&
+									!ev.getCurrentExecutionAttempt().getAssignedResource().getInstance().isAlive()) {
+								
+								int queueToRequest = ev.getParallelSubtaskIndex() + 1;
+								checkpointPath += queueToRequest+"/";
+								break;
+							
+							}
+						}
+					}
+					
+					System.out.println("CHECKPOINT PATH "+checkpointPath);
+					
 				
 					// create new checkpoint source to attach in front of the iteration
-					checkpoint = createCheckpointInput(jobGraph, checkpointPath+"_"+lastCheckpoint+"/", this.parallelism, 
+					checkpoint = createCheckpointInput(jobGraph, checkpointPath, this.parallelism, 
 							iterationTaskConfig.getOutputSerializer(cl), iterationTaskConfig.getOutputType(1, cl), 
 							sourceConfig.getOutputShipStrategy(0), sourceConfig.getOutputComparator(0, cl),
 							sourceConfig.getOutputDataDistribution(0, cl), sourceConfig.getOutputPartitioner(0, cl));
@@ -455,142 +481,154 @@ public class IterationManager {
 						iterationVertex.connectNewDataSetAsInput(checkpointSolutionSet, dp, rpt);
 					}
 				
-				iterationTaskConfig.setNumberOfIterations(maxNumberOfIterations - currentIteration + 1);		
-				
-				// generate new job id
-				jobGraph.setJobID(JobID.generate());
-				
-				
-				this.retries++;
-				
-				
-				// adjust parallelism
-				for(AbstractJobVertex v : jobGraph.getVertices()) {
+					iterationTaskConfig.setNumberOfIterations(maxNumberOfIterations - currentIteration + 1);
 					
-					// dont change all reduces
-					if(v.getParallelism() == this.parallelism && this.parallelism > 1) {
-						v.setParallelism(v.getParallelism() - 1);
-					}
 					
-					// re initialize
-					try {
-						v.initializeOnMaster(libraryCacheManager.getClassLoader(jobId));
-						}
-					catch(Throwable t) {
-						throw new RuntimeException(
-								"Cannot initialize checkpoint task : " + t.getMessage(), t);
-						}
-					
-					TaskConfig vConfig = new TaskConfig(v.getConfiguration());
-					
-					// continue superstep where stopped
-					if(v.getClass().isAssignableFrom(AbstractIterativePactTask.class)) {
-						vConfig.setStartIteration(lastCheckpoint);
-					}
-					vConfig.setIterationRetry(retries);
-				}
-
-				boolean refinedRecovery = true;
-				if(refinedRecovery) {
-					for(ExecutionJobVertex ejv : eg.getAllVertices().values()) {
-						
-						TaskConfig ejvConf = new TaskConfig(ejv.getJobVertex().getConfiguration());
-						
-						for(ExecutionVertex ev : ejv.getTaskVertices())  {
-							// to check: instance dead, inside iteration, dynamic path, all to all output distribution
+					if(refinedRecovery) {
+						for(ExecutionJobVertex ejv : eg.getAllVertices().values()) {
 							
-							// instance dead?
-							if(ev.getCurrentExecutionAttempt().getAssignedResource() != null &&
-									!ev.getCurrentExecutionAttempt().getAssignedResource().getInstance().isAlive()) {
+							TaskConfig ejvConf = new TaskConfig(ejv.getJobVertex().getConfiguration());
+							
+							for(ExecutionVertex ev : ejv.getTaskVertices())  {
+								// to check: instance dead, inside iteration, dynamic path, all to all output distribution
 								
-								if(insideIteration(ejv.getJobVertex())) {
-								
-									// all to all output distribution?
+								// instance dead?
+								if(ev.getCurrentExecutionAttempt().getAssignedResource() != null &&
+										!ev.getCurrentExecutionAttempt().getAssignedResource().getInstance().isAlive()) {
 									
-//									int num = 0;
-//									for(IntermediateResult ir : ejv.getProducedDataSets()) {
-//										for(IntermediateResultPartition irp : ir.getPartitions()) {
-//											
-//											if(irp.getConsumers().get(0).size() > 1) {
-//											
-//												int queueToRequest = ev.getParallelSubtaskIndex() % irp.getConsumers().size();
-//	
-//												String path = "file:/c:/temp/test2/"+irp.getPartitionId()+"_"+queueToRequest+"_"+lastCheckpoint;
-//												
-//												InputFormatVertex ifv = createCheckpointInput(jobGraph, path+"/", this.parallelism, 
-//														ejvConf.getOutputSerializer(cl), ejvConf.getOutputType(1, cl), 
-//														ejvConf.getOutputShipStrategy(num), ejvConf.getOutputComparator(num, cl),
-//														ejvConf.getOutputDataDistribution(num, cl), ejvConf.getOutputPartitioner(num, cl));
-//												
-//												
-//												// add log input
-//												ejv.getJobVertex().connectNewDataSetAsInput(ifv, DistributionPattern.ALL_TO_ALL, ResultPartitionType.PIPELINED);
-//											}
-//										}
-//										num++;
-//									}
+									if(insideIteration(ejv.getJobVertex())) {
 									
-									int num = 0;
-									for(IntermediateDataSet ids : ejv.getJobVertex().getProducedDataSets()) {
+										// all to all output distribution?
 										
-										for(JobEdge e : ids.getConsumers()) {
-											if(e.getDistributionPattern().equals(DistributionPattern.ALL_TO_ALL)) {
+	//									int num = 0;
+	//									for(IntermediateResult ir : ejv.getProducedDataSets()) {
+	//										for(IntermediateResultPartition irp : ir.getPartitions()) {
+	//											
+	//											if(irp.getConsumers().get(0).size() > 1) {
+	//											
+	//												int queueToRequest = ev.getParallelSubtaskIndex() % irp.getConsumers().size();
+	//	
+	//												String path = "file:/c:/temp/test2/"+irp.getPartitionId()+"_"+queueToRequest+"_"+lastCheckpoint;
+	//												
+	//												InputFormatVertex ifv = createCheckpointInput(jobGraph, path+"/", this.parallelism, 
+	//														ejvConf.getOutputSerializer(cl), ejvConf.getOutputType(1, cl), 
+	//														ejvConf.getOutputShipStrategy(num), ejvConf.getOutputComparator(num, cl),
+	//														ejvConf.getOutputDataDistribution(num, cl), ejvConf.getOutputPartitioner(num, cl));
+	//												
+	//												
+	//												// add log input
+	//												ejv.getJobVertex().connectNewDataSetAsInput(ifv, DistributionPattern.ALL_TO_ALL, ResultPartitionType.PIPELINED);
+	//											}
+	//										}
+	//										num++;
+	//									}
+										
+										int num = 0;
+										for(IntermediateDataSet ids : ejv.getJobVertex().getProducedDataSets()) {
+											
+											for(JobEdge e : ids.getConsumers()) {
+												if(e.getDistributionPattern().equals(DistributionPattern.ALL_TO_ALL)) {
+		
+													System.out.println("TEST");
+													
+													int queueToRequest = ev.getParallelSubtaskIndex() % ids.getConsumers().size();
 	
-												System.out.println("TEST");
-												
-												int queueToRequest = ev.getParallelSubtaskIndex() % ids.getConsumers().size();
-
-												String path = "file:/c:/temp/test2/"+ids.getId()+"_"+queueToRequest+"_"+lastCheckpoint;
-												
-												InputFormatVertex ifv = createCheckpointInput(jobGraph, path+"/", this.parallelism, 
-														ejvConf.getOutputSerializer(cl), ejvConf.getOutputType(1, cl), 
-														ejvConf.getOutputShipStrategy(num), ejvConf.getOutputComparator(num, cl),
-														ejvConf.getOutputDataDistribution(num, cl), ejvConf.getOutputPartitioner(num, cl));
-												
-												
-												// add log input
-												e.getTarget().connectNewDataSetAsInput(ifv, DistributionPattern.ALL_TO_ALL, ResultPartitionType.PIPELINED);
-												
+													String path = "file:/c:/temp/test2/"+ids.getId()+"_"+queueToRequest+"_%ITERATION%";
+													
+													System.out.println("INFUSING PATH "+path);
+	//												InputFormatVertex ifv = createCheckpointInput(jobGraph, path+"/", this.parallelism, 
+	//														ejvConf.getOutputSerializer(cl), ejvConf.getOutputType(1, cl), 
+	//														ejvConf.getOutputShipStrategy(num), ejvConf.getOutputComparator(num, cl),
+	//														ejvConf.getOutputDataDistribution(num, cl), ejvConf.getOutputPartitioner(num, cl));
+													
+													TaskConfig tc = new TaskConfig(e.getSource().getProducer().getConfiguration());
+													tc.setInfusedOutputPath(path);
+													tc.setRefinedRecoveryEnd(currentIteration - 1);
+													tc.setRefinedRecoveryStart(this.lastCheckpoint);
+													tc.setRefinedRecoveryOldDop(this.parallelism);
+													tc.setRefinedRecoveryLostNode(queueToRequest);
+													//tc.setStartIteration(lastCheckpoint);
+												}
 											}
+											num++;
 										}
-										num++;
 									}
 								}
 							}
 						}
 					}
-				}
-				
-				// adjust state of this iteration manager
-				this.parallelism--;
-				this.numberOfEventsUntilEndOfSuperstep = this.numberOfTails * this.parallelism;
-				this.workers.clear();
-				this.currentIteration--;
-				this.workerDoneEventCounter = 0;
-				
-				// adjust checkpoint vertices
-				for(IntermediateDataSet ds : iterationVertex.getProducedDataSets()) {
-					for(JobEdge e : ds.getConsumers()) {
-						if(e.getTarget().getName().toLowerCase().contains("checkpoint")) {
-							TaskConfig taskConfig = new TaskConfig(e.getTarget().getConfiguration());
-							taskConfig.setIterationRetry(retries);
+					
+					
+					
+					
+					
+					
+					
+					
+					// generate new job id
+					jobGraph.setJobID(JobID.generate());
+					
+					
+					this.retries++;
+					
+					
+					// adjust parallelism
+					for(AbstractJobVertex v : jobGraph.getVertices()) {
+						
+						// dont change all reduces
+						if(v.getParallelism() == this.parallelism && this.parallelism > 1) {
+							v.setParallelism(v.getParallelism() - 1);
+						}
+						
+						// re initialize
+						try {
+							v.initializeOnMaster(libraryCacheManager.getClassLoader(jobId));
+							}
+						catch(Throwable t) {
+							throw new RuntimeException(
+									"Cannot initialize checkpoint task : " + t.getMessage(), t);
+							}
+						
+						TaskConfig vConfig = new TaskConfig(v.getConfiguration());
+						
+						// continue superstep where stopped
+						if(v.getInvokableClassName().toLowerCase().contains("iteration")) {
+							vConfig.setStartIteration(lastCheckpoint);
+						}
+						vConfig.setIterationRetry(retries);
+					}
+	
+					
+					// adjust state of this iteration manager
+					this.parallelism--;
+					this.numberOfEventsUntilEndOfSuperstep = this.numberOfTails * this.parallelism;
+					this.workers.clear();
+					this.currentIteration = this.lastCheckpoint;
+					this.workerDoneEventCounter = 0;
+					
+					// adjust checkpoint vertices
+					for(IntermediateDataSet ds : iterationVertex.getProducedDataSets()) {
+						for(JobEdge e : ds.getConsumers()) {
+							if(e.getTarget().getName().toLowerCase().contains("checkpoint")) {
+								TaskConfig taskConfig = new TaskConfig(e.getTarget().getConfiguration());
+								taskConfig.setIterationRetry(retries);
+							}
 						}
 					}
-				}
-				
-				System.out.println("submit");
-				
-				try {
-					eg.restartHard(jobGraph.getVerticesSortedTopologicallyFromSources());
-				} catch (InvalidProgramException e) {                                                                                                                                                                                                                                                   
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				} catch (JobException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-				
-				//jobManager.submitJob(jobGraph, false);
+					
+					System.out.println("submit");
+					
+					try {
+						eg.restartHard(jobGraph.getVerticesSortedTopologicallyFromSources());
+					} catch (InvalidProgramException e) {                                                                                                                                                                                                                                                   
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					} catch (JobException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+					
+					//jobManager.submitJob(jobGraph, false);
 				
 				}
 				// Iteration over BC variable
@@ -785,71 +823,71 @@ public class IterationManager {
 //					Thread.sleep(2000);
 //				}
 				
-				iterationTaskConfig.setNumberOfIterations(maxNumberOfIterations - currentIteration + 1);		
-				
-				// generate new job id
-				jobGraph.setJobID(JobID.generate());
-				
-				
-				this.retries++;
-				
-				
-				// adjust parallelism
-				for(AbstractJobVertex v : jobGraph.getVertices()) {
+					iterationTaskConfig.setNumberOfIterations(maxNumberOfIterations - currentIteration + 1);		
 					
-					// dont change all reduces
-					if(v.getParallelism() == this.parallelism && this.parallelism > 1) {
-						v.setParallelism(v.getParallelism() - 1);
+					// generate new job id
+					jobGraph.setJobID(JobID.generate());
+					
+					
+					this.retries++;
+					
+					
+					// adjust parallelism
+					for(AbstractJobVertex v : jobGraph.getVertices()) {
+						
+						// dont change all reduces
+						if(v.getParallelism() == this.parallelism && this.parallelism > 1) {
+							v.setParallelism(v.getParallelism() - 1);
+						}
+						
+						// re initialize
+						try {
+							v.initializeOnMaster(libraryCacheManager.getClassLoader(jobId));
+							}
+						catch(Throwable t) {
+							throw new RuntimeException(
+									"Cannot initialize checkpoint task : " + t.getMessage(), t);
+							}
+						
+						TaskConfig vConfig = new TaskConfig(v.getConfiguration());
+						
+						// continue superstep where stopped
+						if(v.getClass().isAssignableFrom(AbstractIterativePactTask.class)) {
+							vConfig.setStartIteration(lastCheckpoint);
+						}
+						vConfig.setIterationRetry(retries);
 					}
 					
-					// re initialize
+					// adjust state of this iteration manager
+					this.parallelism--;
+					this.numberOfEventsUntilEndOfSuperstep = this.numberOfTails * this.parallelism;
+					this.workers.clear();
+					this.currentIteration--;
+					this.workerDoneEventCounter = 0;
+					
+					// adjust checkpoint vertices
+					for(IntermediateDataSet ds : iterationVertex.getProducedDataSets()) {
+						for(JobEdge e : ds.getConsumers()) {
+							if(e.getTarget().getName().toLowerCase().contains("checkpoint")) {
+								TaskConfig taskConfig = new TaskConfig(e.getTarget().getConfiguration());
+								taskConfig.setIterationRetry(retries);
+							}
+						}
+					}
+					
+					System.out.println("submit");
+					
 					try {
-						v.initializeOnMaster(libraryCacheManager.getClassLoader(jobId));
-						}
-					catch(Throwable t) {
-						throw new RuntimeException(
-								"Cannot initialize checkpoint task : " + t.getMessage(), t);
-						}
-					
-					TaskConfig vConfig = new TaskConfig(v.getConfiguration());
-					
-					// continue superstep where stopped
-					if(v.getClass().isAssignableFrom(AbstractIterativePactTask.class)) {
-						vConfig.setStartIteration(lastCheckpoint);
+						jobManager.currentJobs().get(jobId).get()._1.restartHard(jobGraph.getVerticesSortedTopologicallyFromSources());
+					} catch (InvalidProgramException e) {                                                                                                                                                                                                                                                   
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					} catch (JobException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
 					}
-					vConfig.setIterationRetry(retries);
-				}
-				
-				// adjust state of this iteration manager
-				this.parallelism--;
-				this.numberOfEventsUntilEndOfSuperstep = this.numberOfTails * this.parallelism;
-				this.workers.clear();
-				this.currentIteration--;
-				this.workerDoneEventCounter = 0;
-				
-				// adjust checkpoint vertices
-				for(IntermediateDataSet ds : iterationVertex.getProducedDataSets()) {
-					for(JobEdge e : ds.getConsumers()) {
-						if(e.getTarget().getName().toLowerCase().contains("checkpoint")) {
-							TaskConfig taskConfig = new TaskConfig(e.getTarget().getConfiguration());
-							taskConfig.setIterationRetry(retries);
-						}
-					}
-				}
-				
-				System.out.println("submit");
-				
-				try {
-					jobManager.currentJobs().get(jobId).get()._1.restartHard(jobGraph.getVerticesSortedTopologicallyFromSources());
-				} catch (InvalidProgramException e) {                                                                                                                                                                                                                                                   
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				} catch (JobException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-				
-				//jobManager.submitJob(jobGraph, false);
+					
+					//jobManager.submitJob(jobGraph, false);
 				
 				}
 				else {

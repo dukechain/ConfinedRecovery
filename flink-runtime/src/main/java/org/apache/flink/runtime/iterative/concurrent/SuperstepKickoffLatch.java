@@ -26,6 +26,14 @@ public class SuperstepKickoffLatch {
 	
 	private boolean terminated;
 	
+	public SuperstepKickoffLatch() {
+		
+	}
+	
+	public SuperstepKickoffLatch(int superstepNumber) {
+		this.superstepNumber = superstepNumber;
+	}
+	
 	public void triggerNextSuperstep() {
 		synchronized (monitor) {
 			if (terminated) {

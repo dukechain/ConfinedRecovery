@@ -54,6 +54,7 @@ import org.apache.flink.optimizer.plan.SolutionSetPlanNode;
 import org.apache.flink.optimizer.plan.SourcePlanNode;
 import org.apache.flink.optimizer.plan.WorksetIterationPlanNode;
 import org.apache.flink.optimizer.plan.WorksetPlanNode;
+import org.apache.flink.optimizer.util.NoOpUnaryUdfOp;
 import org.apache.flink.runtime.io.network.DataExchangeMode;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.iterative.convergence.WorksetEmptyConvergenceCriterion;
@@ -800,6 +801,11 @@ public class JobGraphGenerator implements Visitor<PlanNode> {
 		config.setStubWrapper(node.getProgramOperator().getUserCodeWrapper());
 		config.setStubParameters(node.getProgramOperator().getParameters());
 		
+		// set output type if no union
+		if(! (node.getOptimizerNode().getOperator() instanceof NoOpUnaryUdfOp)) {
+			config.setOutputType(node.getOptimizerNode().getOperator().getOperatorInfo().getOutputType(), 1);
+		}
+		
 		// set the driver strategy
 		config.setDriverStrategy(ds);
 		for(int i=0;i<ds.getNumRequiredComparators();i++) {
@@ -833,6 +839,8 @@ public class JobGraphGenerator implements Visitor<PlanNode> {
 		if (node.getPairComparator() != null) {
 			config.setDriverPairComparator(node.getPairComparator());
 		}
+		
+		config.setOutputType(node.getOptimizerNode().getOperator().getOperatorInfo().getOutputType(), 1);
 		
 		// assign memory, file-handles, etc.
 		assignDriverResources(node, config);

@@ -120,7 +120,7 @@ public class ExecutionJobVertex implements Serializable {
 			final IntermediateDataSet result = jobVertex.getProducedDataSets().get(i);
 
 			this.producedDataSets[i] = new IntermediateResult(
-					result.getId(), this, numTaskVertices, result.getResultType());
+					result.getId(), this, numTaskVertices, result.getResultType(), result.getRand());
 		}
 
 		// create all task vertices

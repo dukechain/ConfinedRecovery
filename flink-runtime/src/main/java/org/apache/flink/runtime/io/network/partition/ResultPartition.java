@@ -23,7 +23,6 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -118,6 +117,8 @@ public class ResultPartition implements BufferPoolOwner {
 
 	/** The total number of bytes (both data and event buffers) */
 	private long totalNumberOfBytes;
+	
+	private final int ownQueueToRequest;
 
 	public ResultPartition(
 			JobID jobId,
@@ -128,7 +129,8 @@ public class ResultPartition implements BufferPoolOwner {
 			ResultPartitionConsumableNotifier partitionConsumableNotifier,
 			IOManager ioManager,
 			IOMode defaultIoMode,
-			IntermediateDataSetID intermediateDataSetId) {
+			IntermediateDataSetID intermediateDataSetId,
+			int ownQueueToRequest) {
 
 		this.jobId = checkNotNull(jobId);
 		this.partitionId = checkNotNull(partitionId);
@@ -137,6 +139,7 @@ public class ResultPartition implements BufferPoolOwner {
 		this.partitionManager = checkNotNull(partitionManager);
 		this.partitionConsumableNotifier = checkNotNull(partitionConsumableNotifier);
 		this.intermediateDataSetId = intermediateDataSetId;
+		this.ownQueueToRequest = ownQueueToRequest;
 
 		// Create the subpartitions.
 		switch (partitionType) {
@@ -407,5 +410,9 @@ public class ResultPartition implements BufferPoolOwner {
 
 			hasNotifiedPipelinedConsumers = true;
 		}
+	}
+
+	public int getOwnQueueToRequest() {
+		return ownQueueToRequest;
 	}
 }

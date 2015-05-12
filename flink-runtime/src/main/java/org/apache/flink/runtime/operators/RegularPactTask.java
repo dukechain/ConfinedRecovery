@@ -33,10 +33,14 @@ import org.apache.flink.api.common.functions.Function;
 import org.apache.flink.api.common.functions.GroupCombineFunction;
 import org.apache.flink.api.common.functions.Partitioner;
 import org.apache.flink.api.common.functions.util.FunctionUtils;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeutils.TypeComparator;
 import org.apache.flink.api.common.typeutils.TypeComparatorFactory;
 import org.apache.flink.api.common.typeutils.TypeSerializerFactory;
+import org.apache.flink.api.java.io.CsvInputFormat;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.core.fs.FileInputSplit;
+import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.io.IOReadableWritable;
 import org.apache.flink.runtime.accumulators.AccumulatorEvent;
 import org.apache.flink.runtime.broadcast.BroadcastVariableMaterialization;
@@ -1304,7 +1308,8 @@ public class RegularPactTask<S extends Function, OT> extends AbstractInvokable i
 					oe = new RecordOutputEmitter(strategy, comparator, partitioner, distribution);
 				}
 
-				writers.add(new RecordWriter<Record>(task.getEnvironment().getWriter(outputOffset + i), oe));
+				writers.add(new RecordWriter<Record>(task.getEnvironment().getWriter(outputOffset + i), oe, 
+						task.getIndexInSubtaskGroup(), task.getEnvironment().getNumberOfSubtasks(), task.getEnvironment().getTaskConfiguration()));
 			}
 			if (eventualOutputs != null) {
 				eventualOutputs.addAll(writers);
@@ -1337,7 +1342,8 @@ public class RegularPactTask<S extends Function, OT> extends AbstractInvokable i
 					oe = new OutputEmitter<T>(strategy, comparator, partitioner, dataDist);
 				}
 
-				writers.add(new RecordWriter<SerializationDelegate<T>>(task.getEnvironment().getWriter(outputOffset + i), oe));
+				writers.add(new RecordWriter<SerializationDelegate<T>>(task.getEnvironment().getWriter(outputOffset + i), oe,
+						task.getIndexInSubtaskGroup(), task.getEnvironment().getNumberOfSubtasks(), task.getEnvironment().getTaskConfiguration()));
 			}
 			if (eventualOutputs != null) {
 				eventualOutputs.addAll(writers);

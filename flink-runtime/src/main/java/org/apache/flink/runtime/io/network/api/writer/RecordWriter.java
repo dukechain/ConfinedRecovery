@@ -19,17 +19,13 @@
 package org.apache.flink.runtime.io.network.api.writer;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.flink.api.common.io.FileOutputFormat.OutputDirectoryMode;
 import org.apache.flink.api.java.io.CsvOutputFormat;
 import org.apache.flink.api.java.tuple.Tuple;
-import org.apache.flink.core.fs.Path;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.FileSystem.WriteMode;
+import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.io.IOReadableWritable;
 import org.apache.flink.runtime.event.task.AbstractEvent;
 import org.apache.flink.runtime.io.disk.iomanager.BufferFileWriter;
@@ -40,6 +36,7 @@ import org.apache.flink.runtime.io.network.api.serialization.RecordSerializer.Se
 import org.apache.flink.runtime.io.network.api.serialization.SpanningRecordSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.iterative.task.IterationHeadPactTask;
+import org.apache.flink.runtime.operators.util.TaskConfig;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 
 /**
@@ -68,28 +65,34 @@ public class RecordWriter<T extends IOReadableWritable> {
 	/** {@link RecordSerializer} per outgoing channel */
 	private final RecordSerializer<T>[] serializers;
 	
-	private double rand = Math.random();
-	
 	BufferFileWriter spillWriter;
 	
 	IOManager ioManager;
 	
-	public static ConcurrentHashMap<Integer, List> checkpointTmp =
-			new ConcurrentHashMap<Integer, List>();
+	int indexInSubtaskGroup;
+	int numberOfSubtasks;
 	
-	public static ConcurrentHashMap<InetSocketAddress, List> checkpoint =
-			new ConcurrentHashMap<InetSocketAddress, List>();
+	TaskConfig config;
+	
+//	public static ConcurrentHashMap<Integer, List> checkpointTmp =
+//			new ConcurrentHashMap<Integer, List>();
+//	
+//	public static ConcurrentHashMap<InetSocketAddress, List> checkpoint =
+//			new ConcurrentHashMap<InetSocketAddress, List>();
 
 	public RecordWriter(ResultPartitionWriter writer) {
-		this(writer, new RoundRobinChannelSelector<T>());
+		this(writer, new RoundRobinChannelSelector<T>(), 1, 1, null);
 	}
 
 	@SuppressWarnings("unchecked")
-	public RecordWriter(ResultPartitionWriter writer, ChannelSelector<T> channelSelector) {
+	public RecordWriter(ResultPartitionWriter writer, ChannelSelector<T> channelSelector, 
+			int indexInSubtaskGroup, int numberOfSubtasks, Configuration config) {
 		this.writer = writer;
 		this.channelSelector = channelSelector;
 
 		this.numChannels = writer.getNumberOfOutputChannels();
+		this.indexInSubtaskGroup = indexInSubtaskGroup;
+		this.numberOfSubtasks = numberOfSubtasks;
 
 		/**
 		 * The runtime exposes a channel abstraction for the produced results
@@ -104,9 +107,22 @@ public class RecordWriter<T extends IOReadableWritable> {
 		logOutput = new CsvOutputFormat[writer.getPartition().getNumberOfSubpartitions()];
 		
 		this.ioManager = new IOManagerAsync();
+		this.config = new TaskConfig(config);
 	}
 
 	public void emit(T record) throws IOException, InterruptedException {
+		
+		// during refined recovery only keep records that would have been forwarded locally in the
+		// original execution
+		if(config.getRefinedRecoveryLostNode() > -1 && 
+				IterationHeadPactTask.SUPERSTEP.get() <= config.getRefinedRecoveryEnd() &&
+			channelSelector.selectChannels(record, config.getRefinedRecoveryOldDop())[0] != 
+					config.getRefinedRecoveryLostNode()) {
+			return;
+		}
+		
+		this.setupLogOutput();
+		
 		for (int targetChannel : channelSelector.selectChannels(record, numChannels)) {
 			
 			// CONFINED CHECKPOINTING
@@ -138,31 +154,15 @@ public class RecordWriter<T extends IOReadableWritable> {
 //				}
 //			}
 			
-			if((logOutput[0] == null && writer.getPartition().getNumberOfSubpartitions() > 1 && IterationHeadPactTask.SUPERSTEP.get() > -1) || (logOutput[0] != null 
-					&& !logOutput[0].getOutputFilePath().toString().endsWith("_"+IterationHeadPactTask.SUPERSTEP.get()))) {
-				
-				for(int i = 0; i < writer.getPartition().getNumberOfSubpartitions(); i++) {
-//					if(logOutput[i] != null) {
-//						logOutput[i].close();
-//					}
-
-					logOutput[i] = new CsvOutputFormat(new Path("file:/c:/temp/test2/"+rand+"/"+writer.getIntermediateDataSetID()+"_"+i+"_"+IterationHeadPactTask.SUPERSTEP.get()));
-					logOutput[i].setWriteMode(WriteMode.OVERWRITE);
-					logOutput[i].setOutputDirectoryMode(OutputDirectoryMode.PARONLY);
-					try {
-						logOutput[i].open(1, 1);
-					} catch (IOException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-				}
-			}
 			
 			
-			if(logOutput != null && writer.getPartition().getNumberOfSubpartitions() > 1 && IterationHeadPactTask.SUPERSTEP.get() > -1) {
+			if(logOutput != null && writer.getPartition().getNumberOfSubpartitions() > 1 
+					&& IterationHeadPactTask.SUPERSTEP.get() > -1 && writer.getPartition().getOwnQueueToRequest() != targetChannel) {
 				if(record instanceof SerializationDelegate) {
 					SerializationDelegate<T> sd = (SerializationDelegate<T>) record;
-					logOutput[targetChannel].writeRecord((Tuple) sd.getInstance());
+					if(sd.getInstance() instanceof Tuple) {
+						logOutput[targetChannel].writeRecord((Tuple) sd.getInstance());
+					}
 				}
 			}
 			
@@ -267,13 +267,9 @@ public class RecordWriter<T extends IOReadableWritable> {
 				}
 			}
 		}
-		
-		if(logOutput[0] != null) {
-			
-			for(int i = 0; i < writer.getPartition().getNumberOfSubpartitions(); i++) {
-				if(logOutput[i] != null) {
-					logOutput[i].close();
-				}
+		for(int i = 0; i < writer.getPartition().getNumberOfSubpartitions(); i++) {
+			if(logOutput[i] != null) {
+				logOutput[i].close();
 			}
 		}
 	}
@@ -284,6 +280,30 @@ public class RecordWriter<T extends IOReadableWritable> {
 				Buffer b = s.getCurrentBuffer();
 				if (b != null && !b.isRecycled()) {
 					b.recycle();
+				}
+			}
+		}
+	}
+	
+	private void setupLogOutput() {
+		if((logOutput[0] == null && writer.getPartition().getNumberOfSubpartitions() > 1 && IterationHeadPactTask.SUPERSTEP.get() > -1) || (logOutput[0] != null 
+				&& !logOutput[0].getOutputFilePath().toString().endsWith("_"+IterationHeadPactTask.SUPERSTEP.get()))) {
+			
+			for(int i = 0; i < writer.getPartition().getNumberOfSubpartitions(); i++) {
+//				if(logOutput[i] != null) {
+//					logOutput[i].close();
+//				}
+					if(writer.getPartition().getOwnQueueToRequest() != i) {
+
+					logOutput[i] = new CsvOutputFormat(new Path("file:/c:/temp/test2/"+writer.getIntermediateDataSetID()+"_"+i+"_"+IterationHeadPactTask.SUPERSTEP.get()));
+					logOutput[i].setWriteMode(WriteMode.OVERWRITE);
+					logOutput[i].setOutputDirectoryMode(OutputDirectoryMode.PARONLY);
+					try {
+						logOutput[i].open(indexInSubtaskGroup, numberOfSubtasks);
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
 				}
 			}
 		}

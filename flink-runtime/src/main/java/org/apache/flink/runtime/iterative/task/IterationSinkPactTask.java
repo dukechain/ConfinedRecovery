@@ -73,6 +73,11 @@ public class IterationSinkPactTask<IT> extends DataSinkTask<IT> {
 		
 		keepFormatOpen = true;
 		
+		// used for start from checkpoint during recovery
+		if(this.config.getStartIteration() > 0) {
+			this.superstepNum = this.config.getStartIteration();
+		}
+		
 		SuperstepKickoffLatch nextSuperstepLatch = SuperstepKickoffLatchBroker.instance().get(brokerKey());
 		
 		// should always be the case. TODO enforce this
@@ -100,7 +105,7 @@ public class IterationSinkPactTask<IT> extends DataSinkTask<IT> {
 					pathName += this.config.getIterationRetry();
 				}
 				
-				if(this.superstepNum == 1) {
+				if(this.superstepNum == fileFormat.getIterationWriteMode().getWriteInterval()) {
 					pathName += "_"+this.superstepNum;
 				}
 				else {

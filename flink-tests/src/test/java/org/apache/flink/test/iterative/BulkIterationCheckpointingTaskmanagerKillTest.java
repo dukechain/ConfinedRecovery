@@ -142,7 +142,9 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 			};
 
 			// start the first two TaskManager processes
-			taskManagerProcess1 = new ProcessBuilder(command).start();
+			ProcessBuilder pb1 = new ProcessBuilder(command);
+			pb1.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+			taskManagerProcess1 = pb1.start();
 			new PipeForwarder(taskManagerProcess1.getErrorStream(), processOutput1);
 			taskManagerProcess2 = new ProcessBuilder(command).start();
 			new PipeForwarder(taskManagerProcess2.getErrorStream(), processOutput2);
@@ -187,7 +189,7 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 			System.out.println("DESTROYED");
 
 			// wait for at most 2 minutes for the program to complete
-			programTrigger.join(1200000);
+			programTrigger.join(10000000);
 
 			// check that the program really finished
 			assertFalse("The program did not finish in time", programTrigger.isAlive());
@@ -265,7 +267,7 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 		
 		IterativeDataSet<Tuple1<Integer>> iteration = data.iterate(10);
 		
-		iteration.setCheckpointInterval(1);
+		iteration.setCheckpointInterval(4);
 		
 		DataSet<Tuple1<Integer>> result = iteration.map(new RichMapFunction<Tuple1<Integer>, Tuple1<Integer>>() {
 			
@@ -296,7 +298,7 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 			@Override
 			public Tuple1<Integer> reduce(Tuple1<Integer> value1, Tuple1<Integer> value2)
 					throws Exception {
-				return value1;
+				return value2;
 			}
 		});
 		

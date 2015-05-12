@@ -274,7 +274,7 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 			 * used for receiving the current iteration result from iteration
 			 * tail
 			 */
-			SuperstepKickoffLatch nextStepKickoff = new SuperstepKickoffLatch();
+			SuperstepKickoffLatch nextStepKickoff = new SuperstepKickoffLatch(currentIteration());
 			SuperstepKickoffLatchBroker.instance().handIn(brokerKey,
 					nextStepKickoff);
 

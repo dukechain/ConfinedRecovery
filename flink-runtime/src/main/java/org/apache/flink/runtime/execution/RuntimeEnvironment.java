@@ -134,7 +134,8 @@ public class RuntimeEnvironment implements Environment, Runnable {
 						networkEnvironment.getPartitionConsumableNotifier(),
 						ioManager,
 						networkEnvironment.getDefaultIOMode(),
-						desc.getResultId());
+						desc.getResultId(),
+						desc.getOwnQueueToRequest());
 
 				writers[i] = new ResultPartitionWriter(this.producedPartitions[i]);
 			}

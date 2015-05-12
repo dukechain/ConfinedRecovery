@@ -226,7 +226,7 @@ public class OperatorTranslation {
 		
 		if(iterationHead.getCheckpointInterval() > 0) {
 			
-			boolean anyRegularInput = false;
+			boolean anyRegularInput = true;
 			
 			if(iterationOperator.getNextPartialSolution() instanceof org.apache.flink.api.common.operators.SingleInputOperator) {
 				if(((org.apache.flink.api.common.operators.SingleInputOperator) iterationOperator.getNextPartialSolution() ).getInput()
