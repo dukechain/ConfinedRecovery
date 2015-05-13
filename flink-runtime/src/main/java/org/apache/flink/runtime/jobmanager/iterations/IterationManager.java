@@ -54,11 +54,8 @@ import org.apache.flink.runtime.execution.librarycache.LibraryCacheManager;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
 import org.apache.flink.runtime.executiongraph.ExecutionVertex;
-import org.apache.flink.runtime.executiongraph.IntermediateResult;
-import org.apache.flink.runtime.executiongraph.IntermediateResultPartition;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.iterative.task.AbstractIterativePactTask;
-import org.apache.flink.runtime.iterative.task.IterationHeadPactTask;
 import org.apache.flink.runtime.jobgraph.AbstractJobVertex;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
 import org.apache.flink.runtime.jobgraph.InputFormatVertex;
@@ -401,9 +398,15 @@ public class IterationManager {
 			
 			// this is used to find out if we iterate over bc variables
 			boolean anyRegularOutput = false;
-			if(iterationVertex.getProducedDataSets().get(0).getConsumers()
-					.get(0).getDistributionPattern().equals(DistributionPattern.POINTWISE)) {
-				anyRegularOutput = true;
+//			if(iterationVertex.getProducedDataSets().get(0).getConsumers()
+//					.get(0).getDistributionPattern().equals(DistributionPattern.POINTWISE)) {
+//				anyRegularOutput = true;
+//			}
+			
+			for(IntermediateDataSet e : iterationVertex.getProducedDataSets()) {
+				if(e.getConsumers().get(0).getDistributionPattern().equals(DistributionPattern.POINTWISE)) {
+					anyRegularOutput = true;
+				}
 			}
 			
 			TaskConfig sourceConfig = new TaskConfig(iterationVertex.getInputs().get(0).getSource().getProducer().getConfiguration());
@@ -431,6 +434,8 @@ public class IterationManager {
 								
 								int queueToRequest = ev.getParallelSubtaskIndex() + 1;
 								checkpointPath += queueToRequest+"/";
+								
+								System.out.println("CHECKPOINT PATH "+checkpointPath);
 								break;
 							
 							}
@@ -438,7 +443,6 @@ public class IterationManager {
 					}
 					
 					System.out.println("CHECKPOINT PATH "+checkpointPath);
-					
 				
 					// create new checkpoint source to attach in front of the iteration
 					checkpoint = createCheckpointInput(jobGraph, checkpointPath, this.parallelism, 
@@ -467,7 +471,7 @@ public class IterationManager {
 					
 					// remove everything before the iteration
 					for(JobEdge edge : iterationVertex.getInputs()) {
-						removePredecessors(edge.getSource().getProducer());
+						removePredecessors(edge.getSource().getProducer(), edge.getSource());
 					}
 					
 					// clear iteration inputs
@@ -487,8 +491,6 @@ public class IterationManager {
 					if(refinedRecovery) {
 						for(ExecutionJobVertex ejv : eg.getAllVertices().values()) {
 							
-							TaskConfig ejvConf = new TaskConfig(ejv.getJobVertex().getConfiguration());
-							
 							for(ExecutionVertex ev : ejv.getTaskVertices())  {
 								// to check: instance dead, inside iteration, dynamic path, all to all output distribution
 								
@@ -496,9 +498,8 @@ public class IterationManager {
 								if(ev.getCurrentExecutionAttempt().getAssignedResource() != null &&
 										!ev.getCurrentExecutionAttempt().getAssignedResource().getInstance().isAlive()) {
 									
-									if(insideIteration(ejv.getJobVertex())) {
-									
-										// all to all output distribution?
+									// on dynamic path?
+									if(ejv.getJobVertex().insideIteration()) {
 										
 	//									int num = 0;
 	//									for(IntermediateResult ir : ejv.getProducedDataSets()) {
@@ -527,25 +528,23 @@ public class IterationManager {
 										for(IntermediateDataSet ids : ejv.getJobVertex().getProducedDataSets()) {
 											
 											for(JobEdge e : ids.getConsumers()) {
+												
+												// ALL_TO_ALL distribution?
 												if(e.getDistributionPattern().equals(DistributionPattern.ALL_TO_ALL)) {
-		
-													System.out.println("TEST");
 													
-													int queueToRequest = ev.getParallelSubtaskIndex() % ids.getConsumers().size();
+													int queueToRequest = ev.getParallelSubtaskIndex(); // % ids.getConsumers().size();
 	
-													String path = "file:/c:/temp/test2/"+ids.getId()+"_"+queueToRequest+"_%ITERATION%";
+													String path = RecoveryUtil.getLoggingPath()+"/flinklog_"+ids.getId()+"_"+queueToRequest+"_%ITERATION%";
 													
-													System.out.println("INFUSING PATH "+path);
+													System.out.println("INFUSING PATH "+path+" "+ev.getParallelSubtaskIndex()+" "+ ids.getConsumers().size());
 	//												InputFormatVertex ifv = createCheckpointInput(jobGraph, path+"/", this.parallelism, 
 	//														ejvConf.getOutputSerializer(cl), ejvConf.getOutputType(1, cl), 
 	//														ejvConf.getOutputShipStrategy(num), ejvConf.getOutputComparator(num, cl),
 	//														ejvConf.getOutputDataDistribution(num, cl), ejvConf.getOutputPartitioner(num, cl));
 													
+													// set infusing path
 													TaskConfig tc = new TaskConfig(e.getSource().getProducer().getConfiguration());
 													tc.setInfusedOutputPath(path);
-													tc.setRefinedRecoveryEnd(currentIteration - 1);
-													tc.setRefinedRecoveryStart(this.lastCheckpoint);
-													tc.setRefinedRecoveryOldDop(this.parallelism);
 													tc.setRefinedRecoveryLostNode(queueToRequest);
 													//tc.setStartIteration(lastCheckpoint);
 												}
@@ -594,10 +593,16 @@ public class IterationManager {
 						// continue superstep where stopped
 						if(v.getInvokableClassName().toLowerCase().contains("iteration")) {
 							vConfig.setStartIteration(lastCheckpoint);
+							vConfig.setIterationRetry(retries);
+							if(refinedRecovery) {
+								vConfig.setRefinedRecoveryEnd(currentIteration - 1);
+								vConfig.setRefinedRecoveryStart(this.lastCheckpoint);
+								vConfig.setRefinedRecoveryOldDop(this.parallelism);
+							}
 						}
-						vConfig.setIterationRetry(retries);
+						//vConfig.setIterationRetry(retries);
 					}
-	
+					System.out.println("setRefinedRecoveryEnd "+(currentIteration - 1));
 					
 					// adjust state of this iteration manager
 					this.parallelism--;
@@ -606,15 +611,15 @@ public class IterationManager {
 					this.currentIteration = this.lastCheckpoint;
 					this.workerDoneEventCounter = 0;
 					
-					// adjust checkpoint vertices
-					for(IntermediateDataSet ds : iterationVertex.getProducedDataSets()) {
-						for(JobEdge e : ds.getConsumers()) {
-							if(e.getTarget().getName().toLowerCase().contains("checkpoint")) {
-								TaskConfig taskConfig = new TaskConfig(e.getTarget().getConfiguration());
-								taskConfig.setIterationRetry(retries);
-							}
-						}
-					}
+//					// adjust checkpoint vertices
+//					for(IntermediateDataSet ds : iterationVertex.getProducedDataSets()) {
+//						for(JobEdge e : ds.getConsumers()) {
+//							if(e.getTarget().getName().toLowerCase().contains("checkpoint")) {
+//								TaskConfig taskConfig = new TaskConfig(e.getTarget().getConfiguration());
+//								taskConfig.setIterationRetry(retries);
+//							}
+//						}
+//					}
 					
 					System.out.println("submit");
 					
@@ -703,6 +708,7 @@ public class IterationManager {
 	 * It cancels all remaining tasks in the plan and starts a new execution
 	 * from the last checkpoint
 	 */
+	// backup
 	public void initRecoveryFullCheckpoint() {
 		
 		if(initRerun.compareAndSet(false, true)) {
@@ -788,7 +794,7 @@ public class IterationManager {
 					
 					// remove everything before the iteration
 					for(JobEdge edge : iterationVertex.getInputs()) {
-						removePredecessors(edge.getSource().getProducer());
+						removePredecessors(edge.getSource().getProducer(), edge.getSource());
 					}
 					
 					// clear iteration inputs
@@ -1002,71 +1008,34 @@ public class IterationManager {
 		return inputVertex;
 	}
 	
-	private void removePredecessors(AbstractJobVertex vertex) {
-		if(vertex.getInputs() != null && vertex.getInputs().size() > 0) {
-			for(JobEdge edge : vertex.getInputs()) {
-				removePredecessors(edge.getSource().getProducer());
-			}
-		}
+	private void removePredecessors(AbstractJobVertex vertex, IntermediateDataSet toRemove) {
 //		if(vertex.getSlotSharingGroup() != null) {
 //			vertex.getSlotSharingGroup().clearTaskAssignment();
 //			vertex.getSlotSharingGroup().removeVertexFromGroup(vertex.getID());
 //		}
-		jobGraph.removeVertex(vertex);
-	}
-	
-	/**
-	 * Checks if all predecessors are on the dynamic path of an iteration,
-	 * this means its full input is changing every iteration
-	 * 
-	 * @param ajv
-	 * @return
-	 */
-	private boolean insideIteration(AbstractJobVertex ajv) {
-		if(ajv.getInputs().size() == 0) {
-			return false;
-		}
-		boolean allTrue = true;
-		for(JobEdge je : ajv.getInputs()) {
-			if(je.getSource().getProducer().getInvokableClassName()
-					.equalsIgnoreCase("org.apache.flink.runtime.iterative.task.IterationHeadPactTask")) {
-				return true;
-			}
-			if(je.getSource().getProducer().getInvokableClassName()
-					.equalsIgnoreCase("org.apache.flink.runtime.iterative.task.IterationTailPactTask")) {
-				return false;
-			}
-			if(allTrue) {
-				allTrue = isDynamic(je.getSource().getProducer());
+		if(vertex.getNumberOfProducedIntermediateDataSets() == 1 || toRemove == null) {
+			jobGraph.removeVertex(vertex);
+			
+			if(vertex.getInputs() != null && vertex.getInputs().size() > 0) {
+				for(JobEdge edge : vertex.getInputs()) {
+					removePredecessors(edge.getSource().getProducer(), null);
+				}
 			}
 		}
-		return allTrue;
-	}
-	
-	/**
-	 * Checks if any predecessor is on the dynamic path of an iteration
-	 * 
-	 * @param ajv
-	 * @return
-	 */
-	private boolean isDynamic(AbstractJobVertex ajv) {
-		if(ajv.getInputs().size() == 0) {
-			return false;
-		}
-		boolean anyTrue = false;
-		for(JobEdge je : ajv.getInputs()) {
-			if(je.getSource().getProducer().getInvokableClassName()
-					.equalsIgnoreCase("org.apache.flink.runtime.iterative.task.IterationHeadPactTask")) {
-				return true;
+		else {
+			vertex.getProducedDataSets().remove(toRemove);
+			TaskConfig tc = new TaskConfig(vertex.getConfiguration());
+			if(tc.getNumberOfChainedStubs() > 0) {
+				TaskConfig tcs = tc.getChainedStubConfig(tc.getNumberOfChainedStubs() - 1);
+				tcs.setNumOutputs(
+						tcs.getNumOutputs() - 1
+						);
 			}
-			if(je.getSource().getProducer().getInvokableClassName()
-					.equalsIgnoreCase("org.apache.flink.runtime.iterative.task.IterationTailPactTask")) {
-				return false;
-			}
-			if(!anyTrue) {
-				anyTrue = isDynamic(je.getSource().getProducer());
+			else {
+				tc.setNumOutputs(
+						tc.getNumOutputs() - 1
+						);
 			}
 		}
-		return anyTrue;
 	}
 }

@@ -38,7 +38,7 @@ public class RecordWriterFactory {
 				LOG.trace("StreamRecordWriter initiated with {} bufferTimeout.", bufferTimeout);
 			}
 		} else {
-			output = new RecordWriter<OUT>(bufferWriter, channelSelector);
+			output = new RecordWriter<OUT>(bufferWriter, channelSelector, 1, 1, null);
 
 			if (LOG.isTraceEnabled()) {
 				LOG.trace("RecordWriter initiated.");

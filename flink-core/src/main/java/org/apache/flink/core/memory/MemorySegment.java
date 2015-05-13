@@ -24,6 +24,7 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.Arrays;
 
 /**
  * This class represents a piece of memory allocated from the memory manager. The segment is backed
@@ -67,7 +68,7 @@ import java.nio.ByteOrder;
  *   0x00007fc403e1994a: retq 
  * </pre>
  */
-public class MemorySegment {
+public class MemorySegment implements Cloneable {
 	
 	// flag to enable / disable boundary checks. Note that the compiler eliminates the
 	// code paths of the checks (as dead code) when this constant is set to false.
@@ -938,6 +939,15 @@ public class MemorySegment {
 	public final void copyTo(int offset, MemorySegment target, int targetOffset, int numBytes) {
 		// system arraycopy does the boundary checks anyways, no need to check extra
 		System.arraycopy(this.memory, offset, target.memory, targetOffset, numBytes);
+	}
+	
+	public final MemorySegment duplicate() {
+		return new MemorySegment(Arrays.copyOf(this.memory, this.memory.length));
+	}
+	
+	public final MemorySegment duplicate(MemorySegment ms) {
+		this.copyTo(0, ms, 0, this.size());
+		return ms;
 	}
 	
 	// -------------------------------------------------------------------------

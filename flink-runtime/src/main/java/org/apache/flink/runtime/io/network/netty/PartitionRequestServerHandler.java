@@ -18,8 +18,6 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
-import java.net.InetSocketAddress;
-
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 

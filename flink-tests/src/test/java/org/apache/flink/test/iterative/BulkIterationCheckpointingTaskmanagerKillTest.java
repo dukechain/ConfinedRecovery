@@ -18,15 +18,24 @@
 
 package org.apache.flink.test.iterative;
 
-import akka.actor.ActorRef;
-import akka.actor.ActorSystem;
-import akka.pattern.Patterns;
-import akka.util.Timeout;
+import static org.apache.flink.runtime.testutils.CommonTestUtils.getCurrentClasspath;
+import static org.apache.flink.runtime.testutils.CommonTestUtils.getJavaCommandPath;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.fail;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.StringWriter;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.flink.api.common.ExecutionMode;
+import org.apache.flink.api.common.functions.JoinFunction;
 import org.apache.flink.api.common.functions.MapFunction;
-import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.ExecutionEnvironment;
@@ -49,20 +58,10 @@ import scala.Tuple2;
 import scala.concurrent.Await;
 import scala.concurrent.Future;
 import scala.concurrent.duration.FiniteDuration;
-
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.StringWriter;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-
-import static org.apache.flink.runtime.testutils.CommonTestUtils.getCurrentClasspath;
-import static org.apache.flink.runtime.testutils.CommonTestUtils.getJavaCommandPath;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.fail;
+import akka.actor.ActorRef;
+import akka.actor.ActorSystem;
+import akka.pattern.Patterns;
+import akka.util.Timeout;
 
 /**
  * Abstract base for tests verifying the behavior of the recovery in the
@@ -257,7 +256,7 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 		env.getConfig().setExecutionMode(ExecutionMode.PIPELINED);
 	
 		
-		DataSet<Tuple1<Integer>> data = env.generateSequence(1, 1000).map(new MapFunction<Long, Tuple1<Integer>>() {
+		DataSet<Tuple1<Integer>> data = env.generateSequence(1, 100000).map(new MapFunction<Long, Tuple1<Integer>>() {
 			@Override
 			public Tuple1<Integer> map(Long value) throws Exception {
 				// TODO Auto-generated method stub
@@ -269,7 +268,16 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 		
 		iteration.setCheckpointInterval(4);
 		
-		DataSet<Tuple1<Integer>> result = iteration.map(new RichMapFunction<Tuple1<Integer>, Tuple1<Integer>>() {
+		DataSet<Tuple1<Integer>> result = iteration.join(data).where(0).equalTo(0).with(new JoinFunction<Tuple1<Integer>, Tuple1<Integer>, Tuple1<Integer>>() {
+
+			@Override
+			public Tuple1<Integer> join(Tuple1<Integer> first,
+					Tuple1<Integer> second) throws Exception {
+				//first.f0 += second.f0 / 2;
+				return first;
+			}
+			
+		}).map(new RichMapFunction<Tuple1<Integer>, Tuple1<Integer>>() {
 			
 			private static final long serialVersionUID = 1L;
 	
@@ -289,16 +297,9 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 			
 			@Override
 			public Tuple1<Integer> map(Tuple1<Integer> record) {
-				
-				record.f0 += 100;
+				//System.out.println(record);
+				//record.f0 += 100;
 				return record;
-			}
-		}).groupBy(0).reduce(new ReduceFunction<Tuple1<Integer>>() {
-			
-			@Override
-			public Tuple1<Integer> reduce(Tuple1<Integer> value1, Tuple1<Integer> value2)
-					throws Exception {
-				return value2;
 			}
 		});
 		
@@ -425,7 +426,7 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 				Configuration cfg = new Configuration();
 				cfg.setString(ConfigConstants.JOB_MANAGER_IPC_ADDRESS_KEY, "localhost");
 				cfg.setInteger(ConfigConstants.JOB_MANAGER_IPC_PORT_KEY, jobManagerPort);
-				cfg.setInteger(ConfigConstants.TASK_MANAGER_MEMORY_SIZE_KEY, 20);
+				cfg.setInteger(ConfigConstants.TASK_MANAGER_MEMORY_SIZE_KEY, 30);
 				cfg.setInteger(ConfigConstants.TASK_MANAGER_NETWORK_NUM_BUFFERS_KEY, 100);
 				cfg.setInteger(ConfigConstants.TASK_MANAGER_NUM_TASK_SLOTS, 6);
 

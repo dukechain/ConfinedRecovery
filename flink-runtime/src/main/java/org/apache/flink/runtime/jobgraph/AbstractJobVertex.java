@@ -401,4 +401,59 @@ public class AbstractJobVertex implements java.io.Serializable {
 	public String toString() {
 		return this.name + " (" + this.invokableClassName + ')';
 	}
+	
+	/**
+	 * Checks if all predecessors are on the dynamic path of an iteration,
+	 * this means its full input is changing every iteration
+	 * 
+	 * @param ajv
+	 * @return
+	 */
+	public boolean insideIteration() {
+		if(this.getInputs().size() == 0) {
+			return false;
+		}
+		boolean allTrue = true;
+		for(JobEdge je : this.getInputs()) {
+			if(je.getSource().getProducer().getInvokableClassName()
+					.equalsIgnoreCase("org.apache.flink.runtime.iterative.task.IterationHeadPactTask")) {
+				return true;
+			}
+			if(je.getSource().getProducer().getInvokableClassName()
+					.equalsIgnoreCase("org.apache.flink.runtime.iterative.task.IterationTailPactTask")) {
+				return false;
+			}
+			if(allTrue) {
+				allTrue = isDynamic(je.getSource().getProducer());
+			}
+		}
+		return allTrue;
+	}
+	
+	/**
+	 * Checks if any predecessor is on the dynamic path of an iteration
+	 * 
+	 * @param ajv
+	 * @return
+	 */
+	private boolean isDynamic(AbstractJobVertex ajv) {
+		if(ajv.getInputs().size() == 0) {
+			return false;
+		}
+		boolean anyTrue = false;
+		for(JobEdge je : ajv.getInputs()) {
+			if(je.getSource().getProducer().getInvokableClassName()
+					.equalsIgnoreCase("org.apache.flink.runtime.iterative.task.IterationHeadPactTask")) {
+				return true;
+			}
+			if(je.getSource().getProducer().getInvokableClassName()
+					.equalsIgnoreCase("org.apache.flink.runtime.iterative.task.IterationTailPactTask")) {
+				return false;
+			}
+			if(!anyTrue) {
+				anyTrue = isDynamic(je.getSource().getProducer());
+			}
+		}
+		return anyTrue;
+	}
 }

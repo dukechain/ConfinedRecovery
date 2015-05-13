@@ -19,7 +19,6 @@
 package org.apache.flink.runtime.io.network.partition;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
 
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;

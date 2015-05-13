@@ -574,6 +574,10 @@ public class ExecutionVertex implements Serializable {
 
 		for (IntermediateResultPartition partition : resultPartitions.values()) {
 			int queueToRequest = subTaskIndex % partition.getConsumers().get(0).size();
+			// hack to only log relevant output
+			if(!partition.getProducer().getJobVertex().getJobVertex().insideIteration()) {
+				queueToRequest = -1;
+			}
 			producedPartitions.add(ResultPartitionDeploymentDescriptor.from(partition, queueToRequest));
 		}
 

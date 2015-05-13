@@ -72,5 +72,4 @@ public class BlockingBackChannel {
 	public void notifyOfEndOfSuperstep() {
 		queue.offer(buffer);
 	}
-
 }

@@ -18,6 +18,10 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
+import java.util.ArrayDeque;
+
 import org.apache.flink.runtime.io.disk.iomanager.BufferFileWriter;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager.IOMode;
@@ -25,16 +29,9 @@ import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
-import org.apache.flink.runtime.iterative.task.IterationHeadPactTask;
 import org.apache.flink.runtime.util.event.NotificationListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayDeque;
-
-import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * A pipelined in-memory only subpartition, which can be consumed once.

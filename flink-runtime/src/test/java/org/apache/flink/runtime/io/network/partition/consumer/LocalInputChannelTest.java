@@ -99,7 +99,9 @@ public class LocalInputChannelTest {
 					partitionManager,
 					partitionConsumableNotifier,
 					ioManager,
-					ASYNC);
+					ASYNC,
+					new IntermediateDataSetID(),
+					i);
 
 			// Create a buffer pool for this partition
 			partition.registerBufferPool(

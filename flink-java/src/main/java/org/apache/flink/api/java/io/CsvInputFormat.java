@@ -139,8 +139,6 @@ public class CsvInputFormat<OUT> extends GenericCsvInputFormat<OUT> {
 	public void open(FileInputSplit split) throws IOException {
 		super.open(split);
 		
-		System.out.println("OPEN");
-		
 		@SuppressWarnings("unchecked")
 		FieldParser<Object>[] fieldParsers = (FieldParser<Object>[]) getFieldParsers();
 		

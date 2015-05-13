@@ -43,6 +43,8 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 	private static final float SPILL_THRESHOLD = 0.95f;
 
 	private final LinkedBlockingQueue<MemorySegment> emptyBuffers;
+	
+	private final LinkedBlockingQueue<MemorySegment> emptyBuffersBackup;
 
 	private ArrayDeque<MemorySegment> fullBuffers;
 
@@ -63,11 +65,14 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 	private final List<ReadEnd> readEnds;
 
 	private final int totalNumBuffers;
+	
+	private static ReadEnd readEndBackup = null;
 
 	public SerializedUpdateBuffer() {
 		super(-1, HEADER_LENGTH);
 
 		emptyBuffers = null;
+		emptyBuffersBackup = null;
 		fullBuffers = null;
 
 		ioManager = null;
@@ -84,14 +89,20 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 	public SerializedUpdateBuffer(List<MemorySegment> memSegments, int segmentSize, IOManager ioManager) {
 		super(memSegments.remove(memSegments.size() - 1), segmentSize, HEADER_LENGTH);
 
-		totalNumBuffers = memSegments.size() + 1;
+		totalNumBuffers = (memSegments.size() + 1);// / 2; // half because of backup
 		if (totalNumBuffers < 3) {
 			throw new IllegalArgumentException("SerializedUpdateBuffer needs at least 3 memory segments.");
 		}
-
+		
 		emptyBuffers = new LinkedBlockingQueue<MemorySegment>(totalNumBuffers);
+		emptyBuffersBackup = new LinkedBlockingQueue<MemorySegment>(totalNumBuffers);
 		fullBuffers = new ArrayDeque<MemorySegment>(64);
 
+//		for(int i = 0; i < totalNumBuffers; i++) {
+//			emptyBuffers.add(memSegments.remove(0));
+//		}
+//		emptyBuffersBackup.addAll(memSegments);
+		
 		emptyBuffers.addAll(memSegments);
 
 		int threshold = (int) ((1 - SPILL_THRESHOLD) * totalNumBuffers);
@@ -142,8 +153,16 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 	public void flush() throws IOException {
 		advance();
 	}
+	
+	public static ReadEnd getBackup() {
+		return readEndBackup;
+	}
+	
+	public static void clearBackup() {
+		readEndBackup = null;
+	}
 
-	public ReadEnd switchBuffers() throws IOException {
+	public ReadEnd switchBuffers() throws IOException, InterruptedException {
 		// remove exhausted read ends
 		for (int i = readEnds.size() - 1; i >= 0; --i) {
 			final ReadEnd re = readEnds.get(i);
@@ -161,7 +180,29 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 		final ReadEnd readEnd;
 		if (numBuffersSpilled == 0 && emptyBuffers.size() >= minBuffersForWriteEnd) {
 			// read completely from in-memory segments
-			readEnd = new ReadEnd(fullBuffers.removeFirst(), emptyBuffers, fullBuffers, null, null, 0);
+			ArrayDeque<MemorySegment> fullBufferClone = new ArrayDeque<MemorySegment>(64);
+			for(MemorySegment ms: fullBuffers) {
+				if(emptyBuffersBackup.size() > 0) {
+					fullBufferClone.addLast(ms.duplicate(emptyBuffersBackup.take()));
+				}
+				else {
+					fullBufferClone.addLast(ms.duplicate());
+				}
+			}
+			// System.out.println("fullBuffers size"+fullBuffers.size() + " "+fullBufferClone.size());
+			MemorySegment first = fullBuffers.removeFirst();
+			MemorySegment firstBackup = fullBufferClone.removeFirst();
+			// System.out.println("FB "+firstBackup);
+			readEnd = new ReadEnd(first, emptyBuffers, fullBuffers, null, null, 0);
+			
+			ReadEnd readEndBackupOld = readEndBackup;
+			readEndBackup = new ReadEnd(firstBackup, emptyBuffersBackup, fullBufferClone, null, null, 0);
+			
+			if(readEndBackupOld != null) {
+				// System.out.println("force disp "+readEndBackupOld);
+				readEndBackupOld.forceDispose();
+			}
+			// System.out.println("BACKUP NON SPILLED");
 		} else {
 			int toSpill = Math.min(minBuffersForSpilledReadEnd + minBuffersForWriteEnd - emptyBuffers.size(),
 				fullBuffers.size());
@@ -183,9 +224,11 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 			// now close the writer and create the reader
 			currentWriter.close();
 			final BlockChannelReader<MemorySegment> reader = ioManager.createBlockChannelReader(currentWriter.getChannelID());
+			final BlockChannelReader<MemorySegment> reader2 = ioManager.createBlockChannelReader(currentWriter.getChannelID());
 
 			// gather some memory segments to circulate while reading back the data
 			final List<MemorySegment> readSegments = new ArrayList<MemorySegment>();
+			final List<MemorySegment> readSegments2 = new ArrayList<MemorySegment>();
 			try {
 				while (readSegments.size() < minBuffersForSpilledReadEnd) {
 					readSegments.add(emptyBuffers.take());
@@ -195,10 +238,28 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 				MemorySegment firstSeg = readSegments.remove(readSegments.size() - 1);
 				reader.readBlock(firstSeg);
 				firstSeg = reader.getReturnQueue().take();
+				
+				while (readSegments2.size() < minBuffersForSpilledReadEnd) {
+					readSegments2.add(emptyBuffersBackup.take());
+				}
 
+				// read the first segment
+				MemorySegment firstSeg2 = readSegments2.remove(readSegments2.size() - 1);
+				reader2.readBlock(firstSeg2);
+				firstSeg2 = reader2.getReturnQueue().take();
+				
 				// create the read end reading one less buffer, because the first buffer is already read back
 				readEnd = new ReadEnd(firstSeg, emptyBuffers, fullBuffers, reader, readSegments,
 						numBuffersSpilled - 1);
+				if(readEndBackup != null) {
+					BlockChannelReader<MemorySegment> bcr = readEndBackup.getSpilledBufferSource();
+					if(bcr != null) {
+						bcr.closeAndDelete();
+					}
+				}
+				readEndBackup = new ReadEnd(firstSeg2, emptyBuffersBackup, fullBuffers.clone(), reader2, readSegments2,
+						numBuffersSpilled - 1);
+				// System.out.println("BACKUP SPILLED");
 			} catch (InterruptedException e) {
 				throw new RuntimeException(
 					"SerializedUpdateBuffer was interrupted while reclaiming memory by spilling.", e);
@@ -256,8 +317,259 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 	}
 
 	// ============================================================================================
+//	
+//	private static final class ReadEnd extends AbstractPagedInputView {
+//
+//		private final LinkedBlockingQueue<MemorySegment> emptyBufferTarget;
+//
+//		private final Deque<MemorySegment> fullBufferSource;
+//		
+//		private final Iterator<MemorySegment> fullBufferSourceIteration;
+//
+//		private final BlockChannelReader<MemorySegment> spilledBufferSource;
+//
+//		private int spilledBuffersRemaining;
+//
+//		private int requestsRemaining;
+//
+//		private ReadEnd(MemorySegment firstMemSegment, LinkedBlockingQueue<MemorySegment> emptyBufferTarget,
+//										Deque<MemorySegment> fullBufferSource, BlockChannelReader<MemorySegment> spilledBufferSource,
+//										List<MemorySegment> emptyBuffers, int numBuffersSpilled)
+//			throws IOException {
+//			super(firstMemSegment, firstMemSegment.getInt(0), HEADER_LENGTH);
+//
+//			this.emptyBufferTarget = emptyBufferTarget;
+//			this.fullBufferSource = fullBufferSource;
+//			this.fullBufferSourceIteration = fullBufferSource.iterator();
+//
+//			this.spilledBufferSource = spilledBufferSource;
+//
+//			requestsRemaining = numBuffersSpilled;
+//			this.spilledBuffersRemaining = numBuffersSpilled;
+//
+//			// send the first requests
+//			while (requestsRemaining > 0 && emptyBuffers.size() > 0) {
+//				this.spilledBufferSource.readBlock(emptyBuffers.remove(emptyBuffers.size() - 1));
+//				requestsRemaining--;
+//			}
+//		}
+//
+//		@Override
+//		protected MemorySegment nextSegment(MemorySegment current) throws IOException {
+//			// use the buffer to send the next request
+//			if (requestsRemaining > 0) {
+//				requestsRemaining--;
+//				spilledBufferSource.readBlock(current);
+//			} else {
+//				emptyBufferTarget.add(current);
+//			}
+//
+//			// get the next buffer either from the return queue, or the full buffer source
+//			if (spilledBuffersRemaining > 0) {
+//				spilledBuffersRemaining--;
+//				try {
+//					return spilledBufferSource.getReturnQueue().take();
+//				} catch (InterruptedException e) {
+//					throw new RuntimeException("Read End was interrupted while waiting for spilled buffer.", e);
+//				}
+//			//} else if (fullBufferSource.size() > 0) {
+//				//return fullBufferSource.removeFirst();
+//				} else if(fullBufferSourceIteration.hasNext()) {
+//					MemorySegment ms = fullBufferSourceIteration.next();
+//					if(emptyBufferTarget.size() > 0) {
+//						try {
+//							MemorySegment msTo = emptyBufferTarget.take();
+//							ms.copyTo(0, msTo, 0, ms.size());
+//							return msTo;
+//						} catch (InterruptedException e) {
+//							return ms.duplicate();
+//						}
+//					}
+//					else {
+//						return ms.duplicate();
+//					}
+//			} else {
+//				clear();
+//
+//				// delete the channel, if we had one
+//				if (spilledBufferSource != null) {
+//					//spilledBufferSource.closeAndDelete();
+//				}
+//
+//				throw new EOFException();
+//			}
+//		}
+//
+//		@Override
+//		protected int getLimitForSegment(MemorySegment segment) {
+//			return segment.getInt(0);
+//		}
+//
+//		private boolean disposeIfDone() {
+//			if (fullBufferSource.isEmpty() && spilledBuffersRemaining == 0) {
+//				if (getCurrentSegment() == null || getCurrentPositionInSegment() >= getCurrentSegmentLimit()) {
+//					if (getCurrentSegment() != null) {
+//						emptyBufferTarget.add(getCurrentSegment());
+//						clear();
+//					}
+//
+//					if (spilledBufferSource != null) {
+//						try {
+//							//spilledBufferSource.closeAndDelete();
+//						} catch (Throwable t) {
+//							// do nothing
+//						}
+//					}
+//					return true;
+//				}
+//			}
+//			return false;
+//		}
+//
+//		private void forceDispose(List<MemorySegment> freeMemTarget) throws InterruptedException {
+//			// add the current segment
+//			final MemorySegment current = getCurrentSegment();
+//			clear();
+//			if (current != null) {
+//				freeMemTarget.add(current);
+//			}
+//
+//			// add all remaining memory
+//			freeMemTarget.addAll(fullBufferSource);
+//
+//			// add the segments with the requests issued but not returned
+//			for (int i = spilledBuffersRemaining - requestsRemaining; i > 0; --i) {
+//				freeMemTarget.add(emptyBufferTarget.take());
+//			}
+//
+//			if (spilledBufferSource != null) {
+//				try {
+//					spilledBufferSource.closeAndDelete();
+//				} catch (Throwable t) {
+//					// do nothing
+//				}
+//			}
+//		}
+//	}
 
-	private static final class ReadEnd extends AbstractPagedInputView {
+//	private static final class ReadEnd extends AbstractPagedInputView {
+//
+//		private final LinkedBlockingQueue<MemorySegment> emptyBufferTarget;
+//
+//		private final Deque<MemorySegment> fullBufferSource;
+//
+//		private final BlockChannelReader<MemorySegment> spilledBufferSource;
+//
+//		private int spilledBuffersRemaining;
+//
+//		private int requestsRemaining;
+//
+//		private ReadEnd(MemorySegment firstMemSegment, LinkedBlockingQueue<MemorySegment> emptyBufferTarget,
+//										Deque<MemorySegment> fullBufferSource, BlockChannelReader<MemorySegment> spilledBufferSource,
+//										List<MemorySegment> emptyBuffers, int numBuffersSpilled)
+//			throws IOException {
+//			super(firstMemSegment, firstMemSegment.getInt(0), HEADER_LENGTH);
+//
+//			this.emptyBufferTarget = emptyBufferTarget;
+//			this.fullBufferSource = fullBufferSource;
+//
+//			this.spilledBufferSource = spilledBufferSource;
+//
+//			requestsRemaining = numBuffersSpilled;
+//			this.spilledBuffersRemaining = numBuffersSpilled;
+//
+//			// send the first requests
+//			while (requestsRemaining > 0 && emptyBuffers.size() > 0) {
+//				this.spilledBufferSource.readBlock(emptyBuffers.remove(emptyBuffers.size() - 1));
+//				requestsRemaining--;
+//			}
+//		}
+//
+//		@Override
+//		protected MemorySegment nextSegment(MemorySegment current) throws IOException {
+//			// use the buffer to send the next request
+//			if (requestsRemaining > 0) {
+//				requestsRemaining--;
+//				spilledBufferSource.readBlock(current);
+//			} else {
+//				emptyBufferTarget.add(current);
+//			}
+//
+//			// get the next buffer either from the return queue, or the full buffer source
+//			if (spilledBuffersRemaining > 0) {
+//				spilledBuffersRemaining--;
+//				try {
+//					return spilledBufferSource.getReturnQueue().take();
+//				} catch (InterruptedException e) {
+//					throw new RuntimeException("Read End was interrupted while waiting for spilled buffer.", e);
+//				}
+//			} else if (fullBufferSource.size() > 0) {
+//				return fullBufferSource.removeFirst();
+//			} else {
+//				clear();
+//
+//				// delete the channel, if we had one
+//				if (spilledBufferSource != null) {
+//					spilledBufferSource.closeAndDelete();
+//				}
+//
+//				throw new EOFException();
+//			}
+//		}
+//
+//		@Override
+//		protected int getLimitForSegment(MemorySegment segment) {
+//			return segment.getInt(0);
+//		}
+//
+//		private boolean disposeIfDone() {
+//			if (fullBufferSource.isEmpty() && spilledBuffersRemaining == 0) {
+//				if (getCurrentSegment() == null || getCurrentPositionInSegment() >= getCurrentSegmentLimit()) {
+//					if (getCurrentSegment() != null) {
+//						emptyBufferTarget.add(getCurrentSegment());
+//						clear();
+//					}
+//
+//					if (spilledBufferSource != null) {
+//						try {
+//							spilledBufferSource.closeAndDelete();
+//						} catch (Throwable t) {
+//							// do nothing
+//						}
+//					}
+//					return true;
+//				}
+//			}
+//			return false;
+//		}
+//
+//		private void forceDispose(List<MemorySegment> freeMemTarget) throws InterruptedException {
+//			// add the current segment
+//			final MemorySegment current = getCurrentSegment();
+//			clear();
+//			if (current != null) {
+//				freeMemTarget.add(current);
+//			}
+//
+//			// add all remaining memory
+//			freeMemTarget.addAll(fullBufferSource);
+//
+//			// add the segments with the requests issued but not returned
+//			for (int i = spilledBuffersRemaining - requestsRemaining; i > 0; --i) {
+//				freeMemTarget.add(emptyBufferTarget.take());
+//			}
+//
+//			if (spilledBufferSource != null) {
+//				try {
+//					spilledBufferSource.closeAndDelete();
+//				} catch (Throwable t) {
+//					// do nothing
+//				}
+//			}
+//		}
+//	}
+	
+	public static final class ReadEnd extends AbstractPagedInputView {
 
 		private final LinkedBlockingQueue<MemorySegment> emptyBufferTarget;
 
@@ -289,9 +601,15 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 				requestsRemaining--;
 			}
 		}
+		
+		public BlockChannelReader<MemorySegment> getSpilledBufferSource() {
+			return this.spilledBufferSource;
+		}
 
 		@Override
 		protected MemorySegment nextSegment(MemorySegment current) throws IOException {
+			// System.out.println("NEXT SEGMENT");
+			
 			// use the buffer to send the next request
 			if (requestsRemaining > 0) {
 				requestsRemaining--;
@@ -302,6 +620,7 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 
 			// get the next buffer either from the return queue, or the full buffer source
 			if (spilledBuffersRemaining > 0) {
+				// System.out.println("spilledBuffersRemaining");
 				spilledBuffersRemaining--;
 				try {
 					return spilledBufferSource.getReturnQueue().take();
@@ -309,13 +628,15 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 					throw new RuntimeException("Read End was interrupted while waiting for spilled buffer.", e);
 				}
 			} else if (fullBufferSource.size() > 0) {
+				// System.out.println("removeFirst");
 				return fullBufferSource.removeFirst();
 			} else {
+				// System.out.println("clear");
 				clear();
 
 				// delete the channel, if we had one
 				if (spilledBufferSource != null) {
-					spilledBufferSource.closeAndDelete();
+					//spilledBufferSource.closeAndDelete();
 				}
 
 				throw new EOFException();
@@ -337,7 +658,7 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 
 					if (spilledBufferSource != null) {
 						try {
-							spilledBufferSource.closeAndDelete();
+							//spilledBufferSource.closeAndDelete();
 						} catch (Throwable t) {
 							// do nothing
 						}
@@ -366,11 +687,23 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 
 			if (spilledBufferSource != null) {
 				try {
-					spilledBufferSource.closeAndDelete();
+					//spilledBufferSource.closeAndDelete();
 				} catch (Throwable t) {
 					// do nothing
 				}
 			}
+		}
+		
+		private void forceDispose() throws InterruptedException {
+			// add the current segment
+			final MemorySegment current = getCurrentSegment();
+			clear();
+			if (current != null) {
+				emptyBufferTarget.add(current);
+			}
+
+			// add all remaining memory
+			emptyBufferTarget.addAll(fullBufferSource);
 		}
 	}
 }

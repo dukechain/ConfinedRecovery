@@ -33,7 +33,6 @@ import org.apache.flink.api.common.typeutils.TypeSerializerFactory;
 import org.apache.flink.api.java.io.CsvInputFormat;
 import org.apache.flink.core.fs.FileInputSplit;
 import org.apache.flink.core.fs.Path;
-import org.apache.flink.core.io.IOReadableWritable;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.network.api.reader.MutableReader;
@@ -400,7 +399,7 @@ public abstract class AbstractIterativePactTask<S extends Function, OT> extends 
 					OT record = ti.createSerializer(getExecutionConfig()).createInstance();
 					while(!csvinfusing.reachedEnd()) {
 						if((record = csvinfusing.nextRecord(record)) != null) {
-							System.out.println("infused "+record);
+							//System.out.println("infused "+record);
 							this.output.collect(record);
 						}
 					}

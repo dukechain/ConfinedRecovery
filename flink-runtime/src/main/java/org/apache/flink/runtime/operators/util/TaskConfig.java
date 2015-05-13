@@ -515,8 +515,16 @@ public class TaskConfig implements Serializable {
 		this.config.setInteger(OUTPUTS_NUM, outputCnt + 1);
 	}
 	
+	public void setOutputShipStrategy(ShipStrategyType strategy, int output) {
+		this.config.setInteger(OUTPUT_SHIP_STRATEGY_PREFIX + output, strategy.ordinal());
+	}
+	
 	public int getNumOutputs() {
 		return this.config.getInteger(OUTPUTS_NUM, 0);
+	}
+	
+	public void setNumOutputs(int outputCnt) {
+		this.config.setInteger(OUTPUTS_NUM, outputCnt);
 	}
 
 	public ShipStrategyType getOutputShipStrategy(int outputNum) {

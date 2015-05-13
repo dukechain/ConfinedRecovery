@@ -20,7 +20,6 @@ package org.apache.flink.runtime.iterative.task;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -29,21 +28,18 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.flink.api.common.accumulators.Accumulator;
 import org.apache.flink.api.common.accumulators.LongCounter;
 import org.apache.flink.api.common.functions.Function;
-import org.apache.flink.api.common.io.FileOutputFormat;
-import org.apache.flink.api.common.io.FileOutputFormat.OutputDirectoryMode;
 import org.apache.flink.api.common.operators.util.JoinHashMap;
 import org.apache.flink.api.common.typeutils.TypeComparator;
 import org.apache.flink.api.common.typeutils.TypeComparatorFactory;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.TypeSerializerFactory;
-import org.apache.flink.api.java.io.CsvOutputFormat;
-import org.apache.flink.core.fs.FileSystem.WriteMode;
-import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.runtime.accumulators.AccumulatorEvent;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.disk.InputViewIterator;
+import org.apache.flink.runtime.io.disk.InputViewIteratorCombiner;
+import org.apache.flink.runtime.io.disk.iomanager.BlockChannelReader;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
 import org.apache.flink.runtime.iterative.concurrent.BlockingBackChannel;
 import org.apache.flink.runtime.iterative.concurrent.BlockingBackChannelBroker;
@@ -62,7 +58,6 @@ import org.apache.flink.runtime.operators.hash.CompactingHashTable;
 import org.apache.flink.runtime.operators.util.TaskConfig;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.MutableObjectIterator;
-import org.apache.hadoop.yarn.webapp.hamlet.Hamlet.SUP;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -115,6 +110,8 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 	private Map<String, Accumulator<?, ?>> lastGlobalState = null;
 	
 	public static AtomicInteger SUPERSTEP = new AtomicInteger(-1);
+	
+	private static SerializedUpdateBuffer.ReadEnd backupedReadEnd = null;
 	
 	// --------------------------------------------------------------------------------------------
 
@@ -268,6 +265,13 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 
 		boolean waitForSolutionSetUpdate = config.getWaitForSolutionSetUpdate();
 		boolean isWorksetIteration = config.getIsWorksetIteration();
+		
+		// save backup in case of refined recovery and prevent from reset
+		if(this.config.getRefinedRecoveryEnd() > 0 && SerializedUpdateBuffer.getBackup() != null) {
+			backupedReadEnd = SerializedUpdateBuffer.getBackup();
+			System.out.println("backupedReadEnd "+backupedReadEnd);
+			SerializedUpdateBuffer.clearBackup();
+		}
 
 		try {
 			/*
@@ -539,8 +543,26 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 	}
 
 	private void feedBackSuperstepResult(DataInputView superstepResult) {
-		this.inputs[this.feedbackDataInput] = new InputViewIterator<Y>(
+		
+		if(this.config.getRefinedRecoveryEnd() + 1 == currentIteration()) {
+			System.out.println("COMBINED FEEDBACK "+backupedReadEnd);
+			this.inputs[this.feedbackDataInput] = new InputViewIteratorCombiner<Y>(
+					superstepResult, backupedReadEnd, this.feedbackTypeSerializer.getSerializer());
+			// clear backup file
+			BlockChannelReader<MemorySegment> bcr = backupedReadEnd.getSpilledBufferSource();
+			if(bcr != null) {
+				try {
+					bcr.closeAndDelete();
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+		}
+		else {
+			this.inputs[this.feedbackDataInput] = new InputViewIterator<Y>(
 				superstepResult, this.feedbackTypeSerializer.getSerializer());
+		}
 	}
 
 	private void sendEndOfSuperstepToAllIterationOutputs() throws IOException,

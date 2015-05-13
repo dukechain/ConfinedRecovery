@@ -183,11 +183,14 @@ public abstract class MessagingFunction<VertexKey extends Comparable<VertexKey> 
 	
 	private boolean edgesUsed;
 	
+	private boolean initialized = false;
+	
 	
 	void init(IterationRuntimeContext context) {
 		this.runtimeContext = context;
 		this.outValue = new Tuple2<VertexKey, Message>();
 		this.edgeIterator = new EdgesIterator<VertexKey, EdgeValue>();
+		this.initialized = true;
 	}
 	
 	void set(Iterator<?> edges, Collector<Tuple2<VertexKey, Message>> out) {
@@ -196,6 +199,14 @@ public abstract class MessagingFunction<VertexKey extends Comparable<VertexKey> 
 		this.edgesUsed = false;
 	}
 	
+	public boolean isInitialized() {
+		return initialized;
+	}
+
+	public void setInitialized(boolean initialized) {
+		this.initialized = initialized;
+	}
+
 	private static final class EdgesIterator<VertexKey extends Comparable<VertexKey> & Serializable, 
 		EdgeValue extends Serializable> 
 		implements Iterator<Edge<VertexKey, EdgeValue>>, Iterable<Edge<VertexKey, EdgeValue>>

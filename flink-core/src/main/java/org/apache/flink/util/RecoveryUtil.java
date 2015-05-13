@@ -36,6 +36,10 @@ public class RecoveryUtil {
 				ConfigConstants.DEFAULT_TASK_MANAGER_TMP_PATH).split(File.pathSeparator)[0]);
 	}
 	
+	public static String getLoggingPath() {
+		return ConfigConstants.DEFAULT_TASK_MANAGER_TMP_PATH;
+	}
+	
 	public static void setNewPath(String path) {
 		newPath = path;
 	}

@@ -18,9 +18,10 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
-import com.google.common.collect.HashBasedTable;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Table;
+import static com.google.common.base.Preconditions.checkState;
+
+import java.io.IOException;
+import java.util.Map;
 
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
@@ -28,11 +29,9 @@ import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.util.Map;
-
-import static com.google.common.base.Preconditions.checkState;
+import com.google.common.collect.HashBasedTable;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Table;
 
 /**
  * The result partition manager keeps track of all currently produced/consumed partitions of a

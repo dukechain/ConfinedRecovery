@@ -38,6 +38,7 @@ import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.iterative.task.IterationHeadPactTask;
 import org.apache.flink.runtime.operators.util.TaskConfig;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
+import org.apache.flink.util.RecoveryUtil;
 
 /**
  * A record-oriented runtime result writer.
@@ -74,6 +75,8 @@ public class RecordWriter<T extends IOReadableWritable> {
 	
 	TaskConfig config;
 	
+	int foreignIndex = -1;
+	
 //	public static ConcurrentHashMap<Integer, List> checkpointTmp =
 //			new ConcurrentHashMap<Integer, List>();
 //	
@@ -82,6 +85,10 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 	public RecordWriter(ResultPartitionWriter writer) {
 		this(writer, new RoundRobinChannelSelector<T>(), 1, 1, null);
+	}
+	
+	public RecordWriter(ResultPartitionWriter writer, ChannelSelector<T> channelSelector) {
+		this(writer, channelSelector, 1, 1, null);
 	}
 
 	@SuppressWarnings("unchecked")
@@ -93,6 +100,13 @@ public class RecordWriter<T extends IOReadableWritable> {
 		this.numChannels = writer.getNumberOfOutputChannels();
 		this.indexInSubtaskGroup = indexInSubtaskGroup;
 		this.numberOfSubtasks = numberOfSubtasks;
+		
+		if(writer.getPartition().getOwnQueueToRequest() > 0) {
+			foreignIndex = 0;
+		}
+		else if(writer.getPartition().getOwnQueueToRequest() == 0 && writer.getPartition().getNumberOfSubpartitions() > 1) {
+			foreignIndex = 1;
+		}
 
 		/**
 		 * The runtime exposes a channel abstraction for the produced results
@@ -155,9 +169,10 @@ public class RecordWriter<T extends IOReadableWritable> {
 //			}
 			
 			
-			
+			// log outgoing messages for refined recovery
 			if(logOutput != null && writer.getPartition().getNumberOfSubpartitions() > 1 
-					&& IterationHeadPactTask.SUPERSTEP.get() > -1 && writer.getPartition().getOwnQueueToRequest() != targetChannel) {
+					&& IterationHeadPactTask.SUPERSTEP.get() > -1 && writer.getPartition().getOwnQueueToRequest() != targetChannel
+					&& writer.getPartition().getOwnQueueToRequest() != -1) {
 				if(record instanceof SerializationDelegate) {
 					SerializationDelegate<T> sd = (SerializationDelegate<T>) record;
 					if(sd.getInstance() instanceof Tuple) {
@@ -285,25 +300,35 @@ public class RecordWriter<T extends IOReadableWritable> {
 		}
 	}
 	
+	/**
+	 * Initializes CsvOutputFormats for logging, used for refined recovery
+	 */
 	private void setupLogOutput() {
-		if((logOutput[0] == null && writer.getPartition().getNumberOfSubpartitions() > 1 && IterationHeadPactTask.SUPERSTEP.get() > -1) || (logOutput[0] != null 
-				&& !logOutput[0].getOutputFilePath().toString().endsWith("_"+IterationHeadPactTask.SUPERSTEP.get()))) {
+		
+		if(foreignIndex != -1 && ((logOutput[foreignIndex] == null && writer.getPartition().getNumberOfSubpartitions() > 1 
+				&& IterationHeadPactTask.SUPERSTEP.get() > -1) || (logOutput[foreignIndex] != null 
+				&& !logOutput[foreignIndex].getOutputFilePath().toString().endsWith("_"+IterationHeadPactTask.SUPERSTEP.get())))) {
 			
 			for(int i = 0; i < writer.getPartition().getNumberOfSubpartitions(); i++) {
 //				if(logOutput[i] != null) {
 //					logOutput[i].close();
 //				}
-					if(writer.getPartition().getOwnQueueToRequest() != i) {
+					if(writer.getPartition().getOwnQueueToRequest() != -1 &&
+							writer.getPartition().getOwnQueueToRequest() != i) {
 
-					logOutput[i] = new CsvOutputFormat(new Path("file:/c:/temp/test2/"+writer.getIntermediateDataSetID()+"_"+i+"_"+IterationHeadPactTask.SUPERSTEP.get()));
-					logOutput[i].setWriteMode(WriteMode.OVERWRITE);
-					logOutput[i].setOutputDirectoryMode(OutputDirectoryMode.PARONLY);
-					try {
-						logOutput[i].open(indexInSubtaskGroup, numberOfSubtasks);
-					} catch (IOException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
+						String logPath = RecoveryUtil.getLoggingPath();
+						logPath += "/flinklog_"+writer.getIntermediateDataSetID()+"_"+i+"_"+IterationHeadPactTask.SUPERSTEP.get();
+						System.out.println("LOG PATH "+logPath);
+						
+						logOutput[i] = new CsvOutputFormat(new Path(logPath));
+						logOutput[i].setWriteMode(WriteMode.OVERWRITE);
+						logOutput[i].setOutputDirectoryMode(OutputDirectoryMode.PARONLY);
+						try {
+							logOutput[i].open(indexInSubtaskGroup, numberOfSubtasks);
+						} catch (IOException e) {
+							// TODO Auto-generated catch block
+							e.printStackTrace();
+						}
 				}
 			}
 		}
