@@ -23,7 +23,9 @@ import java.io.IOException;
 import org.apache.flink.api.common.io.FileOutputFormat.OutputDirectoryMode;
 import org.apache.flink.api.java.io.CsvOutputFormat;
 import org.apache.flink.api.java.tuple.Tuple;
+import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.GlobalConfiguration;
 import org.apache.flink.core.fs.FileSystem.WriteMode;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.io.IOReadableWritable;
@@ -77,6 +79,8 @@ public class RecordWriter<T extends IOReadableWritable> {
 	
 	int foreignIndex = -1;
 	
+	boolean doLogging = false;
+	
 //	public static ConcurrentHashMap<Integer, List> checkpointTmp =
 //			new ConcurrentHashMap<Integer, List>();
 //	
@@ -107,6 +111,9 @@ public class RecordWriter<T extends IOReadableWritable> {
 		else if(writer.getPartition().getOwnQueueToRequest() == 0 && writer.getPartition().getNumberOfSubpartitions() > 1) {
 			foreignIndex = 1;
 		}
+		
+		this.doLogging = 
+				GlobalConfiguration.getBoolean(ConfigConstants.REFINED_RECOVERY, ConfigConstants.REFINED_RECOVERY_DEFAULT);
 
 		/**
 		 * The runtime exposes a channel abstraction for the produced results
@@ -118,7 +125,9 @@ public class RecordWriter<T extends IOReadableWritable> {
 			serializers[i] = new SpanningRecordSerializer<T>();
 		}
 		
-		logOutput = new CsvOutputFormat[writer.getPartition().getNumberOfSubpartitions()];
+		if(doLogging) {
+			logOutput = new CsvOutputFormat[writer.getPartition().getNumberOfSubpartitions()];
+		}
 		
 		this.ioManager = new IOManagerAsync();
 		this.config = new TaskConfig(config);
@@ -126,16 +135,18 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 	public void emit(T record) throws IOException, InterruptedException {
 		
-		// during refined recovery only keep records that would have been forwarded locally in the
-		// original execution
-		if(config.getRefinedRecoveryLostNode() > -1 && 
-				IterationHeadPactTask.SUPERSTEP.get() <= config.getRefinedRecoveryEnd() &&
-			channelSelector.selectChannels(record, config.getRefinedRecoveryOldDop())[0] != 
-					config.getRefinedRecoveryLostNode()) {
-			return;
+		if(doLogging) {
+			// during refined recovery only keep records that would have been forwarded locally in the
+			// original execution
+			if(config.getRefinedRecoveryLostNode() > -1 && 
+					IterationHeadPactTask.SUPERSTEP.get() <= config.getRefinedRecoveryEnd() &&
+				channelSelector.selectChannels(record, config.getRefinedRecoveryOldDop())[0] != 
+						config.getRefinedRecoveryLostNode()) {
+				return;
+			}
+
+			this.setupLogOutput();
 		}
-		
-		this.setupLogOutput();
 		
 		for (int targetChannel : channelSelector.selectChannels(record, numChannels)) {
 			
@@ -168,19 +179,19 @@ public class RecordWriter<T extends IOReadableWritable> {
 //				}
 //			}
 			
-			
-			// log outgoing messages for refined recovery
-			if(logOutput != null && writer.getPartition().getNumberOfSubpartitions() > 1 
-					&& IterationHeadPactTask.SUPERSTEP.get() > -1 && writer.getPartition().getOwnQueueToRequest() != targetChannel
-					&& writer.getPartition().getOwnQueueToRequest() != -1) {
-				if(record instanceof SerializationDelegate) {
-					SerializationDelegate<T> sd = (SerializationDelegate<T>) record;
-					if(sd.getInstance() instanceof Tuple) {
-						logOutput[targetChannel].writeRecord((Tuple) sd.getInstance());
+			if(doLogging) {
+				// log outgoing messages for refined recovery
+				if(logOutput != null && writer.getPartition().getNumberOfSubpartitions() > 1 
+						&& IterationHeadPactTask.SUPERSTEP.get() > -1 && writer.getPartition().getOwnQueueToRequest() != targetChannel
+						&& writer.getPartition().getOwnQueueToRequest() != -1) {
+					if(record instanceof SerializationDelegate) {
+						SerializationDelegate<T> sd = (SerializationDelegate<T>) record;
+						if(sd.getInstance() instanceof Tuple) {
+							logOutput[targetChannel].writeRecord((Tuple) sd.getInstance());
+						}
 					}
 				}
 			}
-			
 			
 //			if((spillWriter == null && writer.getPartition().getNumberOfSubpartitions() > 1 && IterationHeadPactTask.SUPERSTEP.get() > -1) || (spillWriter != null 
 //					&& !spillWriter.getChannelID().getPath().endsWith("_"+IterationHeadPactTask.SUPERSTEP.get()))) {

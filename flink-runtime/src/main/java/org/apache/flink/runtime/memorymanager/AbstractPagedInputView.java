@@ -38,9 +38,9 @@ public abstract class AbstractPagedInputView implements DataInputView {
 	
 	protected final int headerLength;				// the number of bytes to skip at the beginning of each segment
 	
-	private int positionInSegment;					// the offset in the current segment
+	public int positionInSegment;					// the offset in the current segment
 	
-	private int limitInSegment;						// the limit in the current segment before switching to the next
+	public int limitInSegment;						// the limit in the current segment before switching to the next
 	
 	private byte[] utfByteBuffer;					// reusable byte buffer for utf-8 decoding
 	private char[] utfCharBuffer;					// reusable char buffer for utf-8 decoding
@@ -154,6 +154,7 @@ public abstract class AbstractPagedInputView implements DataInputView {
 	 * @see #getLimitForSegment(MemorySegment)
 	 */
 	protected final void advance() throws IOException {
+		System.out.println("ADVANCE "+this);
 		// note: this code ensures that in case of EOF, we stay at the same position such that
 		// EOF is reproducible (if nextSegment throws a reproducible EOFException)
 		this.currentSegment = nextSegment(this.currentSegment);

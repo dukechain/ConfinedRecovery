@@ -189,20 +189,18 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 					fullBufferClone.addLast(ms.duplicate());
 				}
 			}
-			// System.out.println("fullBuffers size"+fullBuffers.size() + " "+fullBufferClone.size());
+
 			MemorySegment first = fullBuffers.removeFirst();
 			MemorySegment firstBackup = fullBufferClone.removeFirst();
-			// System.out.println("FB "+firstBackup);
+
 			readEnd = new ReadEnd(first, emptyBuffers, fullBuffers, null, null, 0);
 			
 			ReadEnd readEndBackupOld = readEndBackup;
 			readEndBackup = new ReadEnd(firstBackup, emptyBuffersBackup, fullBufferClone, null, null, 0);
 			
 			if(readEndBackupOld != null) {
-				// System.out.println("force disp "+readEndBackupOld);
 				readEndBackupOld.forceDispose();
 			}
-			// System.out.println("BACKUP NON SPILLED");
 		} else {
 			int toSpill = Math.min(minBuffersForSpilledReadEnd + minBuffersForWriteEnd - emptyBuffers.size(),
 				fullBuffers.size());
@@ -259,7 +257,6 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 				}
 				readEndBackup = new ReadEnd(firstSeg2, emptyBuffersBackup, fullBuffers.clone(), reader2, readSegments2,
 						numBuffersSpilled - 1);
-				// System.out.println("BACKUP SPILLED");
 			} catch (InterruptedException e) {
 				throw new RuntimeException(
 					"SerializedUpdateBuffer was interrupted while reclaiming memory by spilling.", e);
@@ -573,7 +570,7 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 
 		private final LinkedBlockingQueue<MemorySegment> emptyBufferTarget;
 
-		private final Deque<MemorySegment> fullBufferSource;
+		public final Deque<MemorySegment> fullBufferSource;
 
 		private final BlockChannelReader<MemorySegment> spilledBufferSource;
 
@@ -608,7 +605,6 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 
 		@Override
 		protected MemorySegment nextSegment(MemorySegment current) throws IOException {
-			// System.out.println("NEXT SEGMENT");
 			
 			// use the buffer to send the next request
 			if (requestsRemaining > 0) {
@@ -620,7 +616,6 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 
 			// get the next buffer either from the return queue, or the full buffer source
 			if (spilledBuffersRemaining > 0) {
-				// System.out.println("spilledBuffersRemaining");
 				spilledBuffersRemaining--;
 				try {
 					return spilledBufferSource.getReturnQueue().take();
@@ -628,10 +623,8 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 					throw new RuntimeException("Read End was interrupted while waiting for spilled buffer.", e);
 				}
 			} else if (fullBufferSource.size() > 0) {
-				// System.out.println("removeFirst");
 				return fullBufferSource.removeFirst();
 			} else {
-				// System.out.println("clear");
 				clear();
 
 				// delete the channel, if we had one

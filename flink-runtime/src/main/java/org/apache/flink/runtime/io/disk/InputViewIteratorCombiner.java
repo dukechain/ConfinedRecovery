@@ -44,23 +44,18 @@ public class InputViewIteratorCombiner<E> implements MutableObjectIterator<E>
 	public E next(E reuse) throws IOException {
 		try {
 			E t = this.serializer.deserialize(reuse, this.inputView);
-			//System.out.println(t);
 			return t;
 		} catch (EOFException e) {
 			if(this.inputView2 != null) {
-				System.out.println("SWITCH INPUT VIEW");
 				this.inputView = this.inputView2;
 				this.inputView2 = null;
-				System.out.println();
 				try {
 					return this.serializer.deserialize(reuse, this.inputView);
 				} catch (EOFException e2) {
-					System.out.println("FAILFAIL");
 					return null;
 				}
 			}
 			else {
-				System.out.println("DONE");
 				return null;
 			}
 		}

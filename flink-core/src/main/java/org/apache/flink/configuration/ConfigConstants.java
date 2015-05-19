@@ -28,6 +28,10 @@ public final class ConfigConstants {
 	//                            Configuration Keys
 	// ------------------------------------------------------------------------
 	
+	public static final String REFINED_RECOVERY = "refined.recovery";
+	
+	public static final boolean REFINED_RECOVERY_DEFAULT = true;
+	
 	// ---------------------------- Parallelism -------------------------------
 
 	/**

@@ -546,8 +546,19 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 		
 		if(this.config.getRefinedRecoveryEnd() + 1 == currentIteration()) {
 			System.out.println("COMBINED FEEDBACK "+backupedReadEnd);
+			
+			// reinit local strategies such as sorting (since it gets lost otherwise)
+			// possible performance gain: do sorting in InputViewIteratorCombiner
+			int numInputs = driver.getNumberOfInputs();
+			try {
+				initLocalStrategies(numInputs);
+			} catch (Exception e1) {
+				e1.printStackTrace();
+			}
+			
 			this.inputs[this.feedbackDataInput] = new InputViewIteratorCombiner<Y>(
 					superstepResult, backupedReadEnd, this.feedbackTypeSerializer.getSerializer());
+			
 			// clear backup file
 			BlockChannelReader<MemorySegment> bcr = backupedReadEnd.getSpilledBufferSource();
 			if(bcr != null) {

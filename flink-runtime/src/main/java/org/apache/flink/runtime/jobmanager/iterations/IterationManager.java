@@ -46,6 +46,8 @@ import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeutils.TypeComparatorFactory;
 import org.apache.flink.api.common.typeutils.TypeSerializerFactory;
 import org.apache.flink.api.java.io.CsvInputFormat;
+import org.apache.flink.configuration.ConfigConstants;
+import org.apache.flink.configuration.GlobalConfiguration;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.accumulators.AccumulatorEvent;
@@ -418,7 +420,8 @@ public class IterationManager {
 
 			InputFormatVertex checkpoint;
 			InputFormatVertex checkpointSolutionSet = null;
-			boolean refinedRecovery = true;
+			boolean refinedRecovery = 
+					GlobalConfiguration.getBoolean(ConfigConstants.REFINED_RECOVERY, ConfigConstants.REFINED_RECOVERY_DEFAULT);
 			try {
 				
 				// have to create new checkpoint source?
