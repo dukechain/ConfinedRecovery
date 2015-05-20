@@ -294,7 +294,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 			}
 		}
 		for(int i = 0; i < writer.getPartition().getNumberOfSubpartitions(); i++) {
-			if(logOutput[i] != null) {
+			if(logOutput != null && logOutput[i] != null) {
 				logOutput[i].close();
 			}
 		}
