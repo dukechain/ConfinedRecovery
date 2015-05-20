@@ -20,6 +20,9 @@ package org.apache.flink.runtime.jobmanager.iterations;
 
 import static akka.dispatch.Futures.future;
 
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -223,7 +226,19 @@ public class IterationManager {
 
 		} else {
 
-			System.out.println("SIGNAL NEXT");
+			System.out.println("SIGNAL NEXT "+currentIteration);
+			
+			if(currentIteration == 6) {
+				try {
+					new FileOutputStream(new File("C:\\Users\\Markus\\AppData\\Local\\Temp\\ad419e67-1b58-43fe-be35-6f2063c373555")).close();
+				} catch (FileNotFoundException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
 			
 			if (log.isInfoEnabled()) {
 				log.info("signaling that all workers are done in iteration [" + currentIteration+ "]");
@@ -284,6 +299,9 @@ public class IterationManager {
 			if (log.isInfoEnabled()) {
 				log.info("maximum number of iterations [" + currentIteration+ "] reached, terminating...");
 			}
+			
+			System.out.println("IS CONVERGED maxNumberOfIterations "+currentIteration);
+			
 			return true;
 		}
 
@@ -301,6 +319,8 @@ public class IterationManager {
 				if (log.isInfoEnabled()) {
 					log.info("convergence reached after [" + currentIteration + "] iterations, terminating...");
 				}
+				
+				System.out.println("IS CONVERGED convergenceCriterion "+currentIteration);
 				return true;
 			}
 		}
@@ -427,7 +447,7 @@ public class IterationManager {
 				// have to create new checkpoint source?
 				if(anyRegularOutput) {
 					
-					
+					int queueToRequest = 0;
 					// used to only read checkpointed partition during refined recovery
 					if(refinedRecovery) {
 						ExecutionJobVertex ejv = eg.getJobVertex(iterationVertex.getID());
@@ -435,7 +455,7 @@ public class IterationManager {
 							if(ev.getCurrentExecutionAttempt().getAssignedResource() != null &&
 									!ev.getCurrentExecutionAttempt().getAssignedResource().getInstance().isAlive()) {
 								
-								int queueToRequest = ev.getParallelSubtaskIndex() + 1;
+								queueToRequest = ev.getParallelSubtaskIndex() + 1;
 								checkpointPath += queueToRequest+"/";
 								
 								System.out.println("CHECKPOINT PATH "+checkpointPath);
@@ -464,6 +484,11 @@ public class IterationManager {
 						}
 						
 						String checkpointSolutionSetPath = RecoveryUtil.getCheckpointPath()+"deltacheckpoint_"+lastCheckpoint+"/";
+						
+						if(refinedRecovery) {
+							checkpointSolutionSetPath += queueToRequest+"/";
+						}
+						
 						checkpointSolutionSet = createCheckpointInput(jobGraph, checkpointSolutionSetPath, this.parallelism, 
 								iterationTaskConfig.getOutputSerializer(cl), iterationTaskConfig.getOutputType(1, cl), 
 								sourceConfig.getOutputShipStrategy(0), sourceConfig.getOutputComparator(0, cl),
@@ -535,7 +560,7 @@ public class IterationManager {
 												// ALL_TO_ALL distribution?
 												if(e.getDistributionPattern().equals(DistributionPattern.ALL_TO_ALL)) {
 													
-													int queueToRequest = ev.getParallelSubtaskIndex(); // % ids.getConsumers().size();
+													queueToRequest = ev.getParallelSubtaskIndex(); // % ids.getConsumers().size();
 	
 													String path = RecoveryUtil.getLoggingPath()+"/flinklog_"+ids.getId()+"_"+queueToRequest+"_%ITERATION%";
 													

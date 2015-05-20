@@ -29,6 +29,7 @@ import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.operators.CoGroupOperator;
 import org.apache.flink.api.java.operators.CustomUnaryOperation;
+import org.apache.flink.api.java.operators.DeltaIteration;
 import org.apache.flink.api.java.operators.IterativeDataSet;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
@@ -226,51 +227,53 @@ public class VertexCentricIteration<VertexKey extends Comparable<VertexKey> & Se
 			throw new IllegalStateException("The input data set has not been set.");
 		}
 		
-		return this.createBulkResult();
+		//return this.createBulkResult();
 		
-//		// prepare some type information
-//		TypeInformation<Vertex<VertexKey, VertexValue>> vertexTypes = initialVertices.getType();
-//		TypeInformation<VertexKey> keyType = ((TupleTypeInfo<?>) initialVertices.getType()).getTypeAt(0);
-//		TypeInformation<Tuple2<VertexKey, Message>> messageTypeInfo = new TupleTypeInfo<Tuple2<VertexKey,Message>>(keyType, messageType);
-//
-//		// set up the iteration operator
-//		final String name = (this.name != null) ? this.name :
-//			"Vertex-centric iteration (" + updateFunction + " | " + messagingFunction + ")";
-//		final int[] zeroKeyPos = new int[] {0};
-//	
-//		final DeltaIteration<Vertex<VertexKey, VertexValue>, Vertex<VertexKey, VertexValue>> iteration =
-//			this.initialVertices.iterateDelta(this.initialVertices, this.maximumNumberOfIterations, zeroKeyPos);
-//		iteration.name(name);
-//		iteration.parallelism(parallelism);
-//		iteration.setSolutionSetUnManaged(unmanagedSolutionSet);
-//		
-//		// build the messaging function (co group)
-//		CoGroupOperator<?, ?, Tuple2<VertexKey, Message>> messages;
-//		MessagingUdfWithEdgeValues<VertexKey, VertexValue, Message, EdgeValue> messenger = new MessagingUdfWithEdgeValues<VertexKey, VertexValue, Message, EdgeValue>(messagingFunction, messageTypeInfo);
-//		messages = this.edgesWithValue.coGroup(iteration.getWorkset()).where(0).equalTo(0).with(messenger);
-//		
-//		// configure coGroup message function with name and broadcast variables
-//		messages = messages.name("Messaging");
-//		for (Tuple2<String, DataSet<?>> e : this.bcVarsMessaging) {
-//			messages = messages.withBroadcastSet(e.f1, e.f0);
-//		}
-//		
-//		VertexUpdateUdf<VertexKey, VertexValue, Message> updateUdf = new VertexUpdateUdf<VertexKey, VertexValue, Message>(updateFunction, vertexTypes);
-//		
-//		// build the update function (co group)
-//		CoGroupOperator<?, ?, Vertex<VertexKey, VertexValue>> updates =
-//				messages.coGroup(iteration.getSolutionSet()).where(0).equalTo(0).with(updateUdf);
-//		
-//		// configure coGroup update function with name and broadcast variables
-//		updates = updates.name("Vertex State Updates");
-//		for (Tuple2<String, DataSet<?>> e : this.bcVarsUpdate) {
-//			updates = updates.withBroadcastSet(e.f1, e.f0);
-//		}
-//
-//		// let the operator know that we preserve the key field
-//		updates.withForwardedFieldsFirst("0").withForwardedFieldsSecond("0");
-//		
-//		return iteration.closeWith(updates, updates);
+		// prepare some type information
+		TypeInformation<Vertex<VertexKey, VertexValue>> vertexTypes = initialVertices.getType();
+		TypeInformation<VertexKey> keyType = ((TupleTypeInfo<?>) initialVertices.getType()).getTypeAt(0);
+		TypeInformation<Tuple2<VertexKey, Message>> messageTypeInfo = new TupleTypeInfo<Tuple2<VertexKey,Message>>(keyType, messageType);
+
+		// set up the iteration operator
+		final String name = (this.name != null) ? this.name :
+			"Vertex-centric iteration (" + updateFunction + " | " + messagingFunction + ")";
+		final int[] zeroKeyPos = new int[] {0};
+	
+		final DeltaIteration<Vertex<VertexKey, VertexValue>, Vertex<VertexKey, VertexValue>> iteration =
+			this.initialVertices.iterateDelta(this.initialVertices, this.maximumNumberOfIterations, zeroKeyPos);
+		iteration.name(name);
+		iteration.parallelism(parallelism);
+		iteration.setSolutionSetUnManaged(unmanagedSolutionSet);
+		
+		iteration.setCheckpointInterval(4);
+		
+		// build the messaging function (co group)
+		CoGroupOperator<?, ?, Tuple2<VertexKey, Message>> messages;
+		MessagingUdfWithEdgeValues<VertexKey, VertexValue, Message, EdgeValue> messenger = new MessagingUdfWithEdgeValues<VertexKey, VertexValue, Message, EdgeValue>(messagingFunction, messageTypeInfo);
+		messages = this.edgesWithValue.coGroup(iteration.getWorkset()).where(0).equalTo(0).with(messenger);
+		
+		// configure coGroup message function with name and broadcast variables
+		messages = messages.name("Messaging");
+		for (Tuple2<String, DataSet<?>> e : this.bcVarsMessaging) {
+			messages = messages.withBroadcastSet(e.f1, e.f0);
+		}
+		
+		VertexUpdateUdf<VertexKey, VertexValue, Message> updateUdf = new VertexUpdateUdf<VertexKey, VertexValue, Message>(updateFunction, vertexTypes);
+		
+		// build the update function (co group)
+		CoGroupOperator<?, ?, Vertex<VertexKey, VertexValue>> updates =
+				messages.coGroup(iteration.getSolutionSet()).where(0).equalTo(0).with(updateUdf);
+		
+		// configure coGroup update function with name and broadcast variables
+		updates = updates.name("Vertex State Updates");
+		for (Tuple2<String, DataSet<?>> e : this.bcVarsUpdate) {
+			updates = updates.withBroadcastSet(e.f1, e.f0);
+		}
+
+		// let the operator know that we preserve the key field
+		updates.withForwardedFieldsFirst("0").withForwardedFieldsSecond("0");
+		
+		return iteration.closeWith(updates, updates);
 		
 	}
 	

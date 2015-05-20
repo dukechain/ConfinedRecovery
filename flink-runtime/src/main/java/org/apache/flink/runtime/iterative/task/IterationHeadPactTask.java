@@ -20,19 +20,26 @@ package org.apache.flink.runtime.iterative.task;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.apache.commons.collections.MapIterator;
 import org.apache.flink.api.common.accumulators.Accumulator;
 import org.apache.flink.api.common.accumulators.LongCounter;
 import org.apache.flink.api.common.functions.Function;
+import org.apache.flink.api.common.io.FileOutputFormat;
+import org.apache.flink.api.common.io.FileOutputFormat.OutputDirectoryMode;
 import org.apache.flink.api.common.operators.util.JoinHashMap;
 import org.apache.flink.api.common.typeutils.TypeComparator;
 import org.apache.flink.api.common.typeutils.TypeComparatorFactory;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.TypeSerializerFactory;
+import org.apache.flink.api.java.io.CsvOutputFormat;
+import org.apache.flink.core.fs.FileSystem.WriteMode;
+import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.runtime.accumulators.AccumulatorEvent;
@@ -112,6 +119,8 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 	public static AtomicInteger SUPERSTEP = new AtomicInteger(-1);
 	
 	private static SerializedUpdateBuffer.ReadEnd backupedReadEnd = null;
+	
+	private static ArrayList solutionSetBackupRecovery = null; // if workset iteration
 	
 	// --------------------------------------------------------------------------------------------
 
@@ -268,9 +277,10 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 		
 		// save backup in case of refined recovery and prevent from reset
 		if(this.config.getRefinedRecoveryEnd() > 0 && SerializedUpdateBuffer.getBackup() != null) {
+			
 			backupedReadEnd = SerializedUpdateBuffer.getBackup();
-			System.out.println("backupedReadEnd "+backupedReadEnd);
 			SerializedUpdateBuffer.clearBackup();
+			
 		}
 
 		try {
@@ -359,6 +369,31 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 					log.info(formatLogString("starting iteration ["
 							+ currentIteration() + "]"));
 				}
+				
+				// keep a reference for refined recovery
+				Broker<Object> solutionSetBroker = SolutionSetBroker.instance();
+				Object ss = solutionSetBroker.get(brokerKey());
+				if (ss instanceof CompactingHashTable) {
+					
+					// feedback during refined recovery
+					if(this.config.getRefinedRecoveryEnd() + 1 == currentIteration()) {
+						if(solutionSetBackupRecovery != null) {
+							for(Object next : solutionSetBackupRecovery) {
+								X tempRef = (X) getOutputSerializer().createInstance();
+								solutionSet.insertOrReplaceRecord((X) next, tempRef);
+							}
+							// free for garbage collection
+							solutionSetBackupRecovery = null;
+						}
+					}
+				}
+				else if (ss instanceof JoinHashMap) {
+
+					// feedback during refined recovery
+					if(this.config.getRefinedRecoveryEnd() + 1 == currentIteration()) {
+						// TODO
+					}
+				}
 
 				if (waitForSolutionSetUpdate) {
 					solutionSetUpdateBarrier.setup();
@@ -369,37 +404,37 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 				}
 				
 				// CHECKPOINT SOLUTION SET
-//				if(isWorksetIteration) {
-//					String pathName = config.getIterationHeadCheckpointPath();
-//					pathName += "deltacheckpoint_"+this.currentIteration()+"/";
-//					
-//					final FileOutputFormat format = new CsvOutputFormat(new Path(pathName));
-//					format.setWriteMode(WriteMode.OVERWRITE);
-//					format.setOutputDirectoryMode(OutputDirectoryMode.PARONLY);
-//					SolutionSetBroker.instance().get(brokerKey);
-//					
-//					format.open(this.getEnvironment().getIndexInSubtaskGroup(), this.getEnvironment().getNumberOfSubtasks());
-//					
-//					if (objectSolutionSet) {
-//						JoinHashMap<X> solutionSetTemp = (JoinHashMap<X>) SolutionSetBroker.instance().get(brokerKey);
-//						X item;
-//						Iterator it = solutionSetTemp.entrySet().iterator();
-//						while(solutionSetTemp.entrySet().iterator().hasNext()) {
-//							item = (X) solutionSetTemp.entrySet().iterator().next();
-//							format.writeRecord(item);
-//						}
-//					} else {
-//						CompactingHashTable<X> solutionSetTemp = (CompactingHashTable<X>) SolutionSetBroker.instance().get(brokerKey);
-//						MutableObjectIterator<X> it = solutionSetTemp.getEntryIterator();
-//						X item = it.next();
-//						while(item != null) {
-//							format.writeRecord(item);
-//							item = it.next();
-//						}
-//					}
-//					
-//					format.close();
-//				}
+				if(isWorksetIteration && this.config.getRefinedRecoveryEnd() == -1) {
+					String pathName = config.getIterationHeadCheckpointPath();
+					pathName += "deltacheckpoint_"+this.currentIteration()+"/";
+					
+					final FileOutputFormat format = new CsvOutputFormat(new Path(pathName));
+					format.setWriteMode(WriteMode.OVERWRITE);
+					format.setOutputDirectoryMode(OutputDirectoryMode.PARONLY);
+					SolutionSetBroker.instance().get(brokerKey);
+					
+					format.open(this.getEnvironment().getIndexInSubtaskGroup(), this.getEnvironment().getNumberOfSubtasks());
+					
+					if (objectSolutionSet) {
+						JoinHashMap<X> solutionSetTemp = (JoinHashMap<X>) SolutionSetBroker.instance().get(brokerKey);
+						X item;
+						Iterator it = solutionSetTemp.entrySet().iterator();
+						while(solutionSetTemp.entrySet().iterator().hasNext()) {
+							item = (X) solutionSetTemp.entrySet().iterator().next();
+							format.writeRecord(item);
+						}
+					} else {
+						CompactingHashTable<X> solutionSetTemp = (CompactingHashTable<X>) SolutionSetBroker.instance().get(brokerKey);
+						MutableObjectIterator<X> it = solutionSetTemp.getEntryIterator();
+						X item = it.next();
+						while(item != null) {
+							format.writeRecord(item);
+							item = it.next();
+						}
+					}
+					
+					format.close();
+				}
 
 				super.run();
 
@@ -494,7 +529,7 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 			}
 
 			this.finalOutputCollector.close();
-
+			
 		} finally {
 			// make sure we unregister everything from the broker:
 			// - backchannel
@@ -507,6 +542,15 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 			SolutionSetUpdateBarrierBroker.instance().remove(brokerKey);
 
 			if (solutionSet != null) {
+				
+				solutionSetBackupRecovery = new ArrayList<X>();
+				
+				MutableObjectIterator<X> it = solutionSet.getEntryIterator();
+				X next = null;
+				while((next = it.next()) != null) {
+					solutionSetBackupRecovery.add(next);
+				}
+				
 				solutionSet.close();
 			}
 		}
@@ -545,13 +589,14 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 	private void feedBackSuperstepResult(DataInputView superstepResult) {
 		
 		if(this.config.getRefinedRecoveryEnd() + 1 == currentIteration()) {
-			System.out.println("COMBINED FEEDBACK "+backupedReadEnd);
-			
+
 			// reinit local strategies such as sorting (since it gets lost otherwise)
 			// possible performance gain: do sorting in InputViewIteratorCombiner
 			int numInputs = driver.getNumberOfInputs();
 			try {
-				initLocalStrategies(numInputs);
+				if(!isWorksetIteration) {
+					initLocalStrategies(numInputs);
+				}
 			} catch (Exception e1) {
 				e1.printStackTrace();
 			}
@@ -560,15 +605,15 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 					superstepResult, backupedReadEnd, this.feedbackTypeSerializer.getSerializer());
 			
 			// clear backup file
-			BlockChannelReader<MemorySegment> bcr = backupedReadEnd.getSpilledBufferSource();
-			if(bcr != null) {
-				try {
-					bcr.closeAndDelete();
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-			}
+//			BlockChannelReader<MemorySegment> bcr = backupedReadEnd.getSpilledBufferSource();
+//			if(bcr != null) {
+//				try {
+//					bcr.closeAndDelete();
+//				} catch (IOException e) {
+//					// TODO Auto-generated catch block
+//					e.printStackTrace();
+//				}
+//			}
 		}
 		else {
 			this.inputs[this.feedbackDataInput] = new InputViewIterator<Y>(

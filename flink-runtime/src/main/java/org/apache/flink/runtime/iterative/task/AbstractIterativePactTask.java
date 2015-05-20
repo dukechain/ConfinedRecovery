@@ -368,7 +368,7 @@ public abstract class AbstractIterativePactTask<S extends Function, OT> extends 
 	/**
 	 * @return output serializer of this task
 	 */
-	private TypeSerializer<OT> getOutputSerializer() {
+	protected TypeSerializer<OT> getOutputSerializer() {
 		TypeSerializerFactory<OT> serializerFactory;
 
 		if ((serializerFactory = getLastTasksConfig().getOutputSerializer(getUserCodeClassLoader())) ==
