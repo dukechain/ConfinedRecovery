@@ -33,6 +33,7 @@ import org.apache.flink.runtime.event.task.AbstractEvent;
 import org.apache.flink.runtime.io.disk.iomanager.BufferFileWriter;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.disk.iomanager.IOManagerAsync;
+import org.apache.flink.runtime.io.disk.iomanager.RequestQueue;
 import org.apache.flink.runtime.io.network.api.serialization.RecordSerializer;
 import org.apache.flink.runtime.io.network.api.serialization.RecordSerializer.SerializationResult;
 import org.apache.flink.runtime.io.network.api.serialization.SpanningRecordSerializer;
@@ -63,7 +64,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 	private final int numChannels;
 	
-	private CsvOutputFormat<Tuple>[] logOutput = null;
+	private LogWriterThread[] logOutput = null;
 
 	/** {@link RecordSerializer} per outgoing channel */
 	private final RecordSerializer<T>[] serializers;
@@ -121,7 +122,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 		}
 		
 		if(doLogging) {
-			logOutput = new CsvOutputFormat[writer.getPartition().getNumberOfSubpartitions()];
+			logOutput = new LogWriterThread[writer.getPartition().getNumberOfSubpartitions()];
 		}
 		
 		this.ioManager = new IOManagerAsync();
@@ -153,7 +154,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 					if(record instanceof SerializationDelegate) {
 						SerializationDelegate<T> sd = (SerializationDelegate<T>) record;
 						if(sd.getInstance() instanceof Tuple) {
-							logOutput[targetChannel].writeRecord((Tuple) sd.getInstance());
+							logOutput[targetChannel].requestQueue.add((Tuple) sd.getInstance());//.writeRecord((Tuple) sd.getInstance());
 						}
 					}
 				}
@@ -237,7 +238,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 		}
 		for(int i = 0; i < writer.getPartition().getNumberOfSubpartitions(); i++) {
 			if(logOutput != null && logOutput[i] != null) {
-				logOutput[i].close();
+				logOutput[i].shutdownGrace();
 			}
 		}
 	}
@@ -262,7 +263,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 		// or it has to be re-initialized for next superstep
 		if(foreignIndex != -1 && ((logOutput[foreignIndex] == null && writer.getPartition().getNumberOfSubpartitions() > 1 
 				&& IterationHeadPactTask.SUPERSTEP.get() > -1) || (logOutput[foreignIndex] != null 
-				&& !logOutput[foreignIndex].getOutputFilePath().toString().endsWith("_"+IterationHeadPactTask.SUPERSTEP.get())))) {
+				&& !logOutput[foreignIndex].getOutput().getOutputFilePath().toString().endsWith("_"+IterationHeadPactTask.SUPERSTEP.get())))) {
 			
 			// for all outgoing partitions
 			for(int i = 0; i < writer.getPartition().getNumberOfSubpartitions(); i++) {
@@ -274,17 +275,106 @@ public class RecordWriter<T extends IOReadableWritable> {
 					String logPath = RecoveryUtil.getLoggingPath();
 					logPath += "/flinklog_"+writer.getIntermediateDataSetID()+"_"+i+"_"+IterationHeadPactTask.SUPERSTEP.get();
 					
-					logOutput[i] = new CsvOutputFormat(new Path(logPath));
-					logOutput[i].setWriteMode(WriteMode.OVERWRITE);
-					logOutput[i].setOutputDirectoryMode(OutputDirectoryMode.PARONLY);
+					CsvOutputFormat<Tuple> csvOut = new CsvOutputFormat<Tuple>(new Path(logPath));
+					csvOut.setWriteMode(WriteMode.OVERWRITE);
+					csvOut.setOutputDirectoryMode(OutputDirectoryMode.PARONLY);
 					try {
-						logOutput[i].open(indexInSubtaskGroup, numberOfSubtasks);
+						csvOut.open(indexInSubtaskGroup, numberOfSubtasks);
 					} catch (IOException e) {
 						// TODO Auto-generated catch block
 						e.printStackTrace();
 					}
+					
+					logOutput[i] = new LogWriterThread(csvOut);
+					logOutput[i].start();
 				}
 			}
 		}
 	}
+	
+	/**
+	 * A worker thread that asynchronously writes the buffers to disk.
+	 */
+	private static final class LogWriterThread extends Thread {
+		
+		protected final RequestQueue<Tuple> requestQueue;
+		
+		protected final CsvOutputFormat<Tuple> output;
+
+		public CsvOutputFormat<Tuple> getOutput() {
+			return output;
+		}
+
+		private volatile boolean alive;
+
+		// ---------------------------------------------------------------------
+		// Constructors / Destructors
+		// ---------------------------------------------------------------------
+
+		protected LogWriterThread(CsvOutputFormat<Tuple> output) {
+			this.requestQueue = new RequestQueue<Tuple>();
+			this.alive = true;
+			this.output = output;
+		}
+
+		/**
+		 * Shuts the thread down. This operation does not wait for all pending requests to be served, halts the thread
+		 * immediately. All buffers of pending requests are handed back to their channel writers and an exception is
+		 * reported to them, declaring their request queue as closed.
+		 */
+		protected void shutdownGrace() {
+			synchronized (this) {
+				if (alive) {
+					alive = false;
+					requestQueue.close();
+				}
+				
+				while (!this.requestQueue.isEmpty()) {
+					Tuple request = this.requestQueue.poll();
+					if (request != null) {
+						try {
+							output.writeRecord((Tuple) request);
+						} catch (IOException e) {
+							// TODO Auto-generated catch block
+							e.printStackTrace();
+						}
+					}
+				}
+			}
+		}
+
+		// ---------------------------------------------------------------------
+		// Main loop
+		// ---------------------------------------------------------------------
+
+		@Override
+		public void run() {
+			
+			while (this.alive) {
+				
+				Tuple request = null;
+				
+				// get the next buffer. ignore interrupts that are not due to a shutdown.
+				while (alive && request == null) {
+					try {
+						request = requestQueue.take();
+					}
+					catch (InterruptedException e) {
+						if (!this.alive) {
+							return;
+						}
+					}
+				}
+				
+				try {
+					// write buffer to the specified channel
+					output.writeRecord((Tuple) request);
+				}
+				catch (IOException e) {
+					throw new RuntimeException();
+				}
+			} // end while alive
+		}
+		
+	}; // end writer thread
 }

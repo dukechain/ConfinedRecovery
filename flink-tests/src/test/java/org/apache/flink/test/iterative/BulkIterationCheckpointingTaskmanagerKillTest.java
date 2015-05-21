@@ -256,7 +256,7 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 		env.getConfig().setExecutionMode(ExecutionMode.PIPELINED);
 	
 		
-		DataSet<Tuple1<Integer>> data = env.generateSequence(1, 100000).map(new MapFunction<Long, Tuple1<Integer>>() {
+		DataSet<Tuple1<Integer>> data = env.generateSequence(1, 10000).map(new MapFunction<Long, Tuple1<Integer>>() {
 			@Override
 			public Tuple1<Integer> map(Long value) throws Exception {
 				// TODO Auto-generated method stub

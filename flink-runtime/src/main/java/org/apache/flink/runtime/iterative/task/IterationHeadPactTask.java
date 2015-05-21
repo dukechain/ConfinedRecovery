@@ -370,28 +370,30 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 							+ currentIteration() + "]"));
 				}
 				
-				// keep a reference for refined recovery
-				Broker<Object> solutionSetBroker = SolutionSetBroker.instance();
-				Object ss = solutionSetBroker.get(brokerKey());
-				if (ss instanceof CompactingHashTable) {
-					
-					// feedback during refined recovery
-					if(this.config.getRefinedRecoveryEnd() + 1 == currentIteration()) {
-						if(solutionSetBackupRecovery != null) {
-							for(Object next : solutionSetBackupRecovery) {
-								X tempRef = (X) getOutputSerializer().createInstance();
-								solutionSet.insertOrReplaceRecord((X) next, tempRef);
+				if(isWorksetIteration) {
+					// keep a reference for refined recovery
+					Broker<Object> solutionSetBroker = SolutionSetBroker.instance();
+					Object ss = solutionSetBroker.get(brokerKey());
+					if (ss instanceof CompactingHashTable) {
+						
+						// feedback during refined recovery
+						if(this.config.getRefinedRecoveryEnd() + 1 == currentIteration()) {
+							if(solutionSetBackupRecovery != null) {
+								for(Object next : solutionSetBackupRecovery) {
+									X tempRef = (X) getOutputSerializer().createInstance();
+									solutionSet.insertOrReplaceRecord((X) next, tempRef);
+								}
+								// free for garbage collection
+								solutionSetBackupRecovery = null;
 							}
-							// free for garbage collection
-							solutionSetBackupRecovery = null;
 						}
 					}
-				}
-				else if (ss instanceof JoinHashMap) {
-
-					// feedback during refined recovery
-					if(this.config.getRefinedRecoveryEnd() + 1 == currentIteration()) {
-						// TODO
+					else if (ss instanceof JoinHashMap) {
+	
+						// feedback during refined recovery
+						if(this.config.getRefinedRecoveryEnd() + 1 == currentIteration()) {
+							// TODO
+						}
 					}
 				}
 
@@ -405,37 +407,37 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 				
 				// CHECKPOINT SOLUTION SET
 				// TODO include retry count
-				if(isWorksetIteration && this.config.getRefinedRecoveryEnd() == -1) {
-					String pathName = config.getIterationHeadCheckpointPath();
-					pathName += "deltacheckpoint_"+this.currentIteration()+"/";
-					
-					final FileOutputFormat format = new CsvOutputFormat(new Path(pathName));
-					format.setWriteMode(WriteMode.OVERWRITE);
-					format.setOutputDirectoryMode(OutputDirectoryMode.PARONLY);
-					SolutionSetBroker.instance().get(brokerKey);
-					
-					format.open(this.getEnvironment().getIndexInSubtaskGroup(), this.getEnvironment().getNumberOfSubtasks());
-					
-					if (objectSolutionSet) {
-						JoinHashMap<X> solutionSetTemp = (JoinHashMap<X>) SolutionSetBroker.instance().get(brokerKey);
-						X item;
-						Iterator it = solutionSetTemp.entrySet().iterator();
-						while(solutionSetTemp.entrySet().iterator().hasNext()) {
-							item = (X) solutionSetTemp.entrySet().iterator().next();
-							format.writeRecord(item);
-						}
-					} else {
-						CompactingHashTable<X> solutionSetTemp = (CompactingHashTable<X>) SolutionSetBroker.instance().get(brokerKey);
-						MutableObjectIterator<X> it = solutionSetTemp.getEntryIterator();
-						X item = it.next();
-						while(item != null) {
-							format.writeRecord(item);
-							item = it.next();
-						}
-					}
-					
-					format.close();
-				}
+//				if(isWorksetIteration && this.config.getRefinedRecoveryEnd() == -1) {
+//					String pathName = config.getIterationHeadCheckpointPath();
+//					pathName += "deltacheckpoint_"+this.currentIteration()+"/";
+//					
+//					final FileOutputFormat format = new CsvOutputFormat(new Path(pathName));
+//					format.setWriteMode(WriteMode.OVERWRITE);
+//					format.setOutputDirectoryMode(OutputDirectoryMode.PARONLY);
+//					SolutionSetBroker.instance().get(brokerKey);
+//					
+//					format.open(this.getEnvironment().getIndexInSubtaskGroup(), this.getEnvironment().getNumberOfSubtasks());
+//					
+//					if (objectSolutionSet) {
+//						JoinHashMap<X> solutionSetTemp = (JoinHashMap<X>) SolutionSetBroker.instance().get(brokerKey);
+//						X item;
+//						Iterator it = solutionSetTemp.entrySet().iterator();
+//						while(solutionSetTemp.entrySet().iterator().hasNext()) {
+//							item = (X) solutionSetTemp.entrySet().iterator().next();
+//							format.writeRecord(item);
+//						}
+//					} else {
+//						CompactingHashTable<X> solutionSetTemp = (CompactingHashTable<X>) SolutionSetBroker.instance().get(brokerKey);
+//						MutableObjectIterator<X> it = solutionSetTemp.getEntryIterator();
+//						X item = it.next();
+//						while(item != null) {
+//							format.writeRecord(item);
+//							item = it.next();
+//						}
+//					}
+//					
+//					format.close();
+//				}
 
 				super.run();
 
