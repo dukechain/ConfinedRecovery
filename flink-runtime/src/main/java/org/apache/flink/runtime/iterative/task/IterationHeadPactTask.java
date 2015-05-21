@@ -404,6 +404,7 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 				}
 				
 				// CHECKPOINT SOLUTION SET
+				// TODO include retry count
 				if(isWorksetIteration && this.config.getRefinedRecoveryEnd() == -1) {
 					String pathName = config.getIterationHeadCheckpointPath();
 					pathName += "deltacheckpoint_"+this.currentIteration()+"/";

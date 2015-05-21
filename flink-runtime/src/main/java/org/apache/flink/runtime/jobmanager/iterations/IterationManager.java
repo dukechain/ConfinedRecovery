@@ -457,15 +457,12 @@ public class IterationManager {
 								
 								queueToRequest = ev.getParallelSubtaskIndex() + 1;
 								checkpointPath += queueToRequest+"/";
-								
-								System.out.println("CHECKPOINT PATH "+checkpointPath);
+
 								break;
 							
 							}
 						}
 					}
-					
-					System.out.println("CHECKPOINT PATH "+checkpointPath);
 				
 					// create new checkpoint source to attach in front of the iteration
 					checkpoint = createCheckpointInput(jobGraph, checkpointPath, this.parallelism, 
@@ -529,29 +526,6 @@ public class IterationManager {
 									// on dynamic path?
 									if(ejv.getJobVertex().insideIteration()) {
 										
-	//									int num = 0;
-	//									for(IntermediateResult ir : ejv.getProducedDataSets()) {
-	//										for(IntermediateResultPartition irp : ir.getPartitions()) {
-	//											
-	//											if(irp.getConsumers().get(0).size() > 1) {
-	//											
-	//												int queueToRequest = ev.getParallelSubtaskIndex() % irp.getConsumers().size();
-	//	
-	//												String path = "file:/c:/temp/test2/"+irp.getPartitionId()+"_"+queueToRequest+"_"+lastCheckpoint;
-	//												
-	//												InputFormatVertex ifv = createCheckpointInput(jobGraph, path+"/", this.parallelism, 
-	//														ejvConf.getOutputSerializer(cl), ejvConf.getOutputType(1, cl), 
-	//														ejvConf.getOutputShipStrategy(num), ejvConf.getOutputComparator(num, cl),
-	//														ejvConf.getOutputDataDistribution(num, cl), ejvConf.getOutputPartitioner(num, cl));
-	//												
-	//												
-	//												// add log input
-	//												ejv.getJobVertex().connectNewDataSetAsInput(ifv, DistributionPattern.ALL_TO_ALL, ResultPartitionType.PIPELINED);
-	//											}
-	//										}
-	//										num++;
-	//									}
-										
 										int num = 0;
 										for(IntermediateDataSet ids : ejv.getJobVertex().getProducedDataSets()) {
 											
@@ -560,21 +534,15 @@ public class IterationManager {
 												// ALL_TO_ALL distribution?
 												if(e.getDistributionPattern().equals(DistributionPattern.ALL_TO_ALL)) {
 													
-													queueToRequest = ev.getParallelSubtaskIndex(); // % ids.getConsumers().size();
+													// currently it is assumed that there dop = 1 * nodes
+													queueToRequest = ev.getParallelSubtaskIndex(); // % ids.getConsumers().size(); 
 	
 													String path = RecoveryUtil.getLoggingPath()+"/flinklog_"+ids.getId()+"_"+queueToRequest+"_%ITERATION%";
-													
-													System.out.println("INFUSING PATH "+path+" "+ev.getParallelSubtaskIndex()+" "+ ids.getConsumers().size());
-	//												InputFormatVertex ifv = createCheckpointInput(jobGraph, path+"/", this.parallelism, 
-	//														ejvConf.getOutputSerializer(cl), ejvConf.getOutputType(1, cl), 
-	//														ejvConf.getOutputShipStrategy(num), ejvConf.getOutputComparator(num, cl),
-	//														ejvConf.getOutputDataDistribution(num, cl), ejvConf.getOutputPartitioner(num, cl));
 													
 													// set infusing path
 													TaskConfig tc = new TaskConfig(e.getSource().getProducer().getConfiguration());
 													tc.setInfusedOutputPath(path);
 													tc.setRefinedRecoveryLostNode(queueToRequest);
-													//tc.setStartIteration(lastCheckpoint);
 												}
 											}
 											num++;
@@ -584,13 +552,6 @@ public class IterationManager {
 							}
 						}
 					}
-					
-					
-					
-					
-					
-					
-					
 					
 					// generate new job id
 					jobGraph.setJobID(JobID.generate());
@@ -630,24 +591,12 @@ public class IterationManager {
 						}
 						//vConfig.setIterationRetry(retries);
 					}
-					System.out.println("setRefinedRecoveryEnd "+(currentIteration - 1));
-					
 					// adjust state of this iteration manager
 					this.parallelism--;
 					this.numberOfEventsUntilEndOfSuperstep = this.numberOfTails * this.parallelism;
 					this.workers.clear();
 					this.currentIteration = this.lastCheckpoint;
 					this.workerDoneEventCounter = 0;
-					
-//					// adjust checkpoint vertices
-//					for(IntermediateDataSet ds : iterationVertex.getProducedDataSets()) {
-//						for(JobEdge e : ds.getConsumers()) {
-//							if(e.getTarget().getName().toLowerCase().contains("checkpoint")) {
-//								TaskConfig taskConfig = new TaskConfig(e.getTarget().getConfiguration());
-//								taskConfig.setIterationRetry(retries);
-//							}
-//						}
-//					}
 					
 					System.out.println("submit");
 					
@@ -730,266 +679,7 @@ public class IterationManager {
 			}
 		}
 	}
-	
-	/**
-	 * This method initiates the recovery process of the iteration
-	 * It cancels all remaining tasks in the plan and starts a new execution
-	 * from the last checkpoint
-	 */
-	// backup
-	public void initRecoveryFullCheckpoint() {
-		
-		if(initRerun.compareAndSet(false, true)) {
 
-			// find iteration vertex
-			AbstractJobVertex iterationVertex = null;
-			for(AbstractJobVertex vertex : jobGraph.getVertices()) {
-				if(vertex.getInvokableClassName()
-						.equalsIgnoreCase("org.apache.flink.runtime.iterative.task.IterationHeadPactTask")) {
-					
-					TaskConfig taskConfig = new TaskConfig(vertex.getConfiguration());
-					// found right iteration head
-					if(taskConfig.getIterationId() == this.iterationId) {
-						iterationVertex = vertex;
-					}
-				}
-			}
-			
-			// here to avoid concurrent modification exception
-			TaskConfig iterationTaskConfig = new TaskConfig(iterationVertex.getConfiguration());
-			
-			String checkpointPath = RecoveryUtil.getCheckpointPath()+"checkpoint"; //+iterationVertex.getName().trim();
-			
-			if(retries > 0) {
-				checkpointPath += retries;
-			}
-			
-			// save distribution pattern
-			DistributionPattern dp = iterationVertex.getInputs().get(0).getDistributionPattern();
-			ResultPartitionType rpt = iterationVertex.getInputs().get(0).getSource().getResultType();
-			
-			boolean anyRegularOutput = false;
-//			for(IntermediateDataSet ids : iterationVertex.getProducedDataSets()) {
-//				for(JobEdge je : ids.getConsumers()) {
-//					if(je.getDistributionPattern().equals(DistributionPattern.POINTWISE)) {
-//						anyRegularOutput = true;
-//					}
-//				}
-//			}
-			if(iterationVertex.getProducedDataSets().get(0).getConsumers()
-					.get(0).getDistributionPattern().equals(DistributionPattern.POINTWISE)) {
-				anyRegularOutput = true;
-			}
-			
-			TaskConfig sourceConfig = new TaskConfig(iterationVertex.getInputs().get(0).getSource().getProducer().getConfiguration());
-			if(sourceConfig.getNumberOfChainedStubs() > 0) {
-				sourceConfig = sourceConfig.getChainedStubConfig(0);
-			}
-			
-			ClassLoader cl = this.libraryCacheManager.getClassLoader(jobId);
-
-			InputFormatVertex checkpoint;
-			InputFormatVertex checkpointSolutionSet = null;
-			try {
-				
-				// have to create new checkpoint source?
-				if(anyRegularOutput) {
-				
-					// create new checkpoint source to attach in front of the iteration
-					checkpoint = createCheckpointInput(jobGraph, checkpointPath+"_"+lastCheckpoint+"/", this.parallelism, 
-							iterationTaskConfig.getOutputSerializer(cl), iterationTaskConfig.getOutputType(1, cl), 
-							sourceConfig.getOutputShipStrategy(0), sourceConfig.getOutputComparator(0, cl),
-							sourceConfig.getOutputDataDistribution(0, cl), sourceConfig.getOutputPartitioner(0, cl));
-					
-					jobGraph.addVertex(checkpoint);
-					
-					// create second input for solution set
-					if(iterationTaskConfig.getIsWorksetIteration()) {
-						
-						sourceConfig = new TaskConfig(iterationVertex.getInputs().get(1).getSource().getProducer().getConfiguration());
-						if(sourceConfig.getNumberOfChainedStubs() > 0) {
-							sourceConfig = sourceConfig.getChainedStubConfig(0);
-						}
-						
-						String checkpointSolutionSetPath = RecoveryUtil.getCheckpointPath()+"deltacheckpoint_"+lastCheckpoint+"/";
-						checkpointSolutionSet = createCheckpointInput(jobGraph, checkpointSolutionSetPath, this.parallelism, 
-								iterationTaskConfig.getOutputSerializer(cl), iterationTaskConfig.getOutputType(1, cl), 
-								sourceConfig.getOutputShipStrategy(0), sourceConfig.getOutputComparator(0, cl),
-								sourceConfig.getOutputDataDistribution(0, cl), sourceConfig.getOutputPartitioner(0, cl));
-						
-						jobGraph.addVertex(checkpointSolutionSet);
-					}
-					
-					// remove everything before the iteration
-					for(JobEdge edge : iterationVertex.getInputs()) {
-						removePredecessors(edge.getSource().getProducer(), edge.getSource());
-					}
-					
-					// clear iteration inputs
-					iterationVertex.getInputs().clear();
-					
-					// connect checkpoint as new input
-					iterationVertex.connectNewDataSetAsInput(checkpoint, dp, rpt);
-					
-					// connect second input for solution set
-					if(iterationTaskConfig.getIsWorksetIteration()) {
-						iterationVertex.connectNewDataSetAsInput(checkpointSolutionSet, dp, rpt);
-					}
-//				}
-//				else {
-					// remove everything before the iteration
-//					for(JobEdge edge : iterationVertex.getInputs()) {
-//						removePredecessors(edge.getSource().getProducer());
-//					}
-//					
-//					// clear iteration inputs
-//					iterationVertex.getInputs().clear();
-					
-//					InputFormatVertex inputVertex = new InputFormatVertex("Dummy Source");
-//					inputVertex.setInvokableClass(DataSourceTask.class);
-//					
-//					jobGraph.addVertex(inputVertex);
-//					iterationVertex.connectNewDataSetAsInput(inputVertex, dp, rpt);
-					
-					//iterationVertex.updateCoLocationGroup(null);
-					//iterationVertex.setSlotSharingGroup(null);
-//					 
-//					Thread.sleep(2000);
-//				}
-				
-					iterationTaskConfig.setNumberOfIterations(maxNumberOfIterations - currentIteration + 1);		
-					
-					// generate new job id
-					jobGraph.setJobID(JobID.generate());
-					
-					
-					this.retries++;
-					
-					
-					// adjust parallelism
-					for(AbstractJobVertex v : jobGraph.getVertices()) {
-						
-						// dont change all reduces
-						if(v.getParallelism() == this.parallelism && this.parallelism > 1) {
-							v.setParallelism(v.getParallelism() - 1);
-						}
-						
-						// re initialize
-						try {
-							v.initializeOnMaster(libraryCacheManager.getClassLoader(jobId));
-							}
-						catch(Throwable t) {
-							throw new RuntimeException(
-									"Cannot initialize checkpoint task : " + t.getMessage(), t);
-							}
-						
-						TaskConfig vConfig = new TaskConfig(v.getConfiguration());
-						
-						// continue superstep where stopped
-						if(v.getClass().isAssignableFrom(AbstractIterativePactTask.class)) {
-							vConfig.setStartIteration(lastCheckpoint);
-						}
-						vConfig.setIterationRetry(retries);
-					}
-					
-					// adjust state of this iteration manager
-					this.parallelism--;
-					this.numberOfEventsUntilEndOfSuperstep = this.numberOfTails * this.parallelism;
-					this.workers.clear();
-					this.currentIteration--;
-					this.workerDoneEventCounter = 0;
-					
-					// adjust checkpoint vertices
-					for(IntermediateDataSet ds : iterationVertex.getProducedDataSets()) {
-						for(JobEdge e : ds.getConsumers()) {
-							if(e.getTarget().getName().toLowerCase().contains("checkpoint")) {
-								TaskConfig taskConfig = new TaskConfig(e.getTarget().getConfiguration());
-								taskConfig.setIterationRetry(retries);
-							}
-						}
-					}
-					
-					System.out.println("submit");
-					
-					try {
-						jobManager.currentJobs().get(jobId).get()._1.restartHard(jobGraph.getVerticesSortedTopologicallyFromSources());
-					} catch (InvalidProgramException e) {                                                                                                                                                                                                                                                   
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					} catch (JobException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-					
-					//jobManager.submitJob(jobGraph, false);
-				
-				}
-				else {
-					
-					this.retries++;
-					
-					// adjust parallelism
-					for(AbstractJobVertex v : jobGraph.getVertices()) {
-						
-						// dont change all reduces
-						if(v.getParallelism() == this.parallelism && this.parallelism > 1) {
-							v.setParallelism(v.getParallelism() - 1);
-						}
-						
-						// re initialize
-						try {
-							v.initializeOnMaster(libraryCacheManager.getClassLoader(jobId));
-							}
-						catch(Throwable t) {
-							throw new RuntimeException(
-									"Cannot initialize checkpoint task : " + t.getMessage(), t);
-							}
-						
-						// continue superstep where stopped
-						if(v.getClass().isAssignableFrom(AbstractIterativePactTask.class)) {
-							iterationTaskConfig.setStartIteration(lastCheckpoint);
-							iterationTaskConfig.setIterationRetry(retries);
-						}
-					}
-					
-					// adjust state of this iteration manager
-					this.parallelism--;
-					this.numberOfEventsUntilEndOfSuperstep = this.numberOfTails * this.parallelism;
-					this.workers.clear();
-					this.currentIteration--;
-					this.workerDoneEventCounter = 0;
-					
-					// adjust checkpoint vertices
-					for(IntermediateDataSet ds : iterationVertex.getProducedDataSets()) {
-						for(JobEdge e : ds.getConsumers()) {
-							if(e.getTarget().getName().toLowerCase().contains("checkpoint")) {
-								TaskConfig taskConfig = new TaskConfig(e.getTarget().getConfiguration());
-								taskConfig.setIterationRetry(retries);
-							}
-						}
-					}
-					
-					future(new Callable<Object>() {
-						@Override
-						public Object call() throws Exception {
-							try{
-								Thread.sleep(2000);
-							}catch(InterruptedException e){
-								// should only happen on shutdown
-							}
-							jobManager.currentJobs().get(jobId).get()._1.restartHard(jobGraph.getVerticesSortedTopologicallyFromSources());
-							return null;
-						}
-					}, AkkaUtils.globalExecutionContext());
-				}
-				
-			} catch (ClassNotFoundException e) {
-				e.printStackTrace();
-				throw new RuntimeException("Something went wrong during recovery");
-			}
-		}
-	}
-	
 	private static <X> InputFormatVertex createCheckpointInput(JobGraph jobGraph, String checkpointPath, 
 			int numSubTasks, TypeSerializerFactory<?> serializer, TypeInformation<X> typeInfo, ShipStrategyType shipStrategy,
 			TypeComparatorFactory<?> comparator, DataDistribution dataDistribution, Partitioner<?> partitioner) {

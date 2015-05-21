@@ -112,12 +112,6 @@ public class IterationSinkPactTask<IT> extends DataSinkTask<IT> {
 					pathName = pathName.substring(0, pathName.length()-2)+"_"+this.superstepNum;
 				}
 				
-				// CONFINED
-//				RuntimeEnvironment env = (RuntimeEnvironment) this.getEnvironment();
-//				System.out.println(env.getTaskmanager().path().address().host());
-				
-				System.out.println("Iteration Sink "+pathName+"/");
-				
 				// set new path
 				fileFormat.setOutputFilePath(new Path(pathName+"/"));
 			

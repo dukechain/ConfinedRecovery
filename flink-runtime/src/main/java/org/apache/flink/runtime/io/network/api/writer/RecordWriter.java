@@ -80,12 +80,6 @@ public class RecordWriter<T extends IOReadableWritable> {
 	int foreignIndex = -1;
 	
 	boolean doLogging = false;
-	
-//	public static ConcurrentHashMap<Integer, List> checkpointTmp =
-//			new ConcurrentHashMap<Integer, List>();
-//	
-//	public static ConcurrentHashMap<InetSocketAddress, List> checkpoint =
-//			new ConcurrentHashMap<InetSocketAddress, List>();
 
 	public RecordWriter(ResultPartitionWriter writer) {
 		this(writer, new RoundRobinChannelSelector<T>(), 1, 1, null);
@@ -112,6 +106,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 			foreignIndex = 1;
 		}
 		
+		// log outgoing messages in case of refined recovery
 		this.doLogging = 
 				GlobalConfiguration.getBoolean(ConfigConstants.REFINED_RECOVERY, ConfigConstants.REFINED_RECOVERY_DEFAULT);
 
@@ -150,35 +145,6 @@ public class RecordWriter<T extends IOReadableWritable> {
 		
 		for (int targetChannel : channelSelector.selectChannels(record, numChannels)) {
 			
-			// CONFINED CHECKPOINTING
-			// check if writing to remote channel
-//			InetSocketAddress remote = writer.getPartition().getRemote(targetChannel);
-//			if(remote == null) {
-//				if(checkpointTmp.containsKey(targetChannel)) {
-//					checkpointTmp.get(targetChannel).add(record);
-//				}
-//				else {
-//					List<T> l = Collections.synchronizedList(new ArrayList<T>());
-//					l.add(record);
-//					checkpointTmp.put(targetChannel, l);
-//				}
-//			}
-//			else if(remote.getHostName().contains("localhost")) {
-//				checkpointTmp.get(targetChannel).clear();
-//			}
-//			else if(remote.getHostName() != "localhost") {
-//				if(checkpoint.containsKey(remote)) {
-//					checkpoint.get(targetChannel).add(remote);
-//				}
-//				else {
-//					List<T> l = Collections.synchronizedList(new ArrayList<T>());
-//					l.add(record);
-//					l.addAll(checkpointTmp.get(targetChannel));
-//					checkpointTmp.get(targetChannel).clear();
-//					checkpoint.put(remote, l);
-//				}
-//			}
-			
 			if(doLogging) {
 				// log outgoing messages for refined recovery
 				if(logOutput != null && writer.getPartition().getNumberOfSubpartitions() > 1 
@@ -193,19 +159,6 @@ public class RecordWriter<T extends IOReadableWritable> {
 				}
 			}
 			
-//			if((spillWriter == null && writer.getPartition().getNumberOfSubpartitions() > 1 && IterationHeadPactTask.SUPERSTEP.get() > -1) || (spillWriter != null 
-//					&& !spillWriter.getChannelID().getPath().endsWith("_"+IterationHeadPactTask.SUPERSTEP.get()))) {
-//				try {
-//					spillWriter = ioManager.createBufferFileWriter(
-//							ioManager.createChannel(
-//									"c:/temp/test3/"+writer.getPartition().getPartitionId().getPartitionId()+"."+targetChannel +"_"+IterationHeadPactTask.SUPERSTEP.get()));
-//				} catch (IOException e) {
-//					// TODO Auto-generated catch block
-//					e.printStackTrace();
-//				}
-//			}
-			
-			
 			// serialize with corresponding serializer and send full buffer
 			RecordSerializer<T> serializer = serializers[targetChannel];
 
@@ -213,17 +166,6 @@ public class RecordWriter<T extends IOReadableWritable> {
 				SerializationResult result = serializer.addRecord(record);
 				while (result.isFullBuffer()) {
 					Buffer buffer = serializer.getCurrentBuffer();
-					
-					// logging
-//					if(spillWriter != null && writer.getPartition().getNumberOfSubpartitions() > 1 && IterationHeadPactTask.SUPERSTEP.get() > -1) {
-//						try {
-//							buffer.retain();
-//							spillWriter.writeBlock(buffer);
-//						} catch (IOException e) {
-//							// TODO Auto-generated catch block
-//							e.printStackTrace();
-//						}
-//					}
 
 					if (buffer != null) {
 						writer.writeBuffer(buffer, targetChannel);
@@ -316,30 +258,31 @@ public class RecordWriter<T extends IOReadableWritable> {
 	 */
 	private void setupLogOutput() {
 		
+		// either first logOutput has to be initialized
+		// or it has to be re-initialized for next superstep
 		if(foreignIndex != -1 && ((logOutput[foreignIndex] == null && writer.getPartition().getNumberOfSubpartitions() > 1 
 				&& IterationHeadPactTask.SUPERSTEP.get() > -1) || (logOutput[foreignIndex] != null 
 				&& !logOutput[foreignIndex].getOutputFilePath().toString().endsWith("_"+IterationHeadPactTask.SUPERSTEP.get())))) {
 			
+			// for all outgoing partitions
 			for(int i = 0; i < writer.getPartition().getNumberOfSubpartitions(); i++) {
-//				if(logOutput[i] != null) {
-//					logOutput[i].close();
-//				}
-					if(writer.getPartition().getOwnQueueToRequest() != -1 &&
-							writer.getPartition().getOwnQueueToRequest() != i) {
+				
+				// make sure we dont log our own messages
+				if(writer.getPartition().getOwnQueueToRequest() != -1 &&
+						writer.getPartition().getOwnQueueToRequest() != i) {
 
-						String logPath = RecoveryUtil.getLoggingPath();
-						logPath += "/flinklog_"+writer.getIntermediateDataSetID()+"_"+i+"_"+IterationHeadPactTask.SUPERSTEP.get();
-						System.out.println("LOG PATH "+logPath);
-						
-						logOutput[i] = new CsvOutputFormat(new Path(logPath));
-						logOutput[i].setWriteMode(WriteMode.OVERWRITE);
-						logOutput[i].setOutputDirectoryMode(OutputDirectoryMode.PARONLY);
-						try {
-							logOutput[i].open(indexInSubtaskGroup, numberOfSubtasks);
-						} catch (IOException e) {
-							// TODO Auto-generated catch block
-							e.printStackTrace();
-						}
+					String logPath = RecoveryUtil.getLoggingPath();
+					logPath += "/flinklog_"+writer.getIntermediateDataSetID()+"_"+i+"_"+IterationHeadPactTask.SUPERSTEP.get();
+					
+					logOutput[i] = new CsvOutputFormat(new Path(logPath));
+					logOutput[i].setWriteMode(WriteMode.OVERWRITE);
+					logOutput[i].setOutputDirectoryMode(OutputDirectoryMode.PARONLY);
+					try {
+						logOutput[i].open(indexInSubtaskGroup, numberOfSubtasks);
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
 				}
 			}
 		}
