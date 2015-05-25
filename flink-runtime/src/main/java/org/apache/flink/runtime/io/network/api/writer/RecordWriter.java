@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.io.network.api.writer;
 
 import java.io.IOException;
+import java.util.ArrayList;
 
 import org.apache.flink.api.common.io.FileOutputFormat.OutputDirectoryMode;
 import org.apache.flink.api.java.io.CsvOutputFormat;
@@ -155,6 +156,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 						SerializationDelegate<T> sd = (SerializationDelegate<T>) record;
 						if(sd.getInstance() instanceof Tuple) {
 							logOutput[targetChannel].requestQueue.add((Tuple) sd.getInstance());//.writeRecord((Tuple) sd.getInstance());
+							//logOutput[targetChannel].output.writeRecord((Tuple) sd.getInstance());
 						}
 					}
 				}
@@ -236,8 +238,10 @@ public class RecordWriter<T extends IOReadableWritable> {
 				}
 			}
 		}
+		
 		for(int i = 0; i < writer.getPartition().getNumberOfSubpartitions(); i++) {
 			if(logOutput != null && logOutput[i] != null) {
+				// with this call we make sure all logs are written until we continue
 				logOutput[i].shutdownGrace();
 			}
 		}
@@ -323,24 +327,41 @@ public class RecordWriter<T extends IOReadableWritable> {
 		 * reported to them, declaring their request queue as closed.
 		 */
 		protected void shutdownGrace() {
-			synchronized (this) {
+			//synchronized (this) {
+			
+				//ArrayList<Tuple> req = new ArrayList<Tuple>();
 				if (alive) {
 					alive = false;
 					requestQueue.close();
 				}
 				
-				while (!this.requestQueue.isEmpty()) {
-					Tuple request = this.requestQueue.poll();
-					if (request != null) {
-						try {
-							output.writeRecord((Tuple) request);
-						} catch (IOException e) {
-							// TODO Auto-generated catch block
-							e.printStackTrace();
-						}
-					}
-				}
-			}
+//				if(! this.requestQueue.isEmpty()) {
+//					requestQueue.drainTo(req);
+//				}
+				
+//				try {
+//					for(Tuple request : req) {
+//						// write buffer to the specified channel
+//						output.writeRecord((Tuple) request);
+//					}
+//				}
+//				catch (IOException e) {
+//					throw new RuntimeException();
+//				}
+//				req.clear();
+				
+//				while (!this.requestQueue.isEmpty()) {
+//					Tuple request = this.requestQueue.poll();
+//					if (request != null) {
+//						try {
+//							output.writeRecord((Tuple) request);
+//						} catch (IOException e) {
+//							// TODO Auto-generated catch block
+//							e.printStackTrace();
+//						}
+//					}
+//				}
+			//}
 		}
 
 		// ---------------------------------------------------------------------
@@ -350,30 +371,59 @@ public class RecordWriter<T extends IOReadableWritable> {
 		@Override
 		public void run() {
 			
+			ArrayList<Tuple> req = new ArrayList<Tuple>();
+			
 			while (this.alive) {
 				
-				Tuple request = null;
+				//Tuple request = null;
+				//ArrayList<Tuple> req = new ArrayList<Tuple>();
 				
 				// get the next buffer. ignore interrupts that are not due to a shutdown.
-				while (alive && request == null) {
-					try {
-						request = requestQueue.take();
-					}
-					catch (InterruptedException e) {
-						if (!this.alive) {
-							return;
-						}
-					}
-				}
+//				try {
+//					req.add(requestQueue.take());
+//					requestQueue.drainTo(req);
+//				}
+//				catch (InterruptedException e) {
+//					if (!this.alive) {
+//						return;
+//					}
+//				}
 				
+				requestQueue.drainTo(req);
+
 				try {
-					// write buffer to the specified channel
-					output.writeRecord((Tuple) request);
+					for(Tuple request : req) {
+						// write buffer to the specified channel
+						output.writeRecord((Tuple) request);
+					}
 				}
 				catch (IOException e) {
 					throw new RuntimeException();
 				}
+				req.clear();
+				try {
+					Thread.sleep(10);
+				} catch (InterruptedException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
 			} // end while alive
+			
+			// make sure everything is written
+			if(! this.requestQueue.isEmpty()) {
+				requestQueue.drainTo(req);
+			}
+		
+			try {
+				for(Tuple request : req) {
+					// write buffer to the specified channel
+					output.writeRecord((Tuple) request);
+				}
+			}
+			catch (IOException e) {
+				throw new RuntimeException();
+			}
+			req.clear();
 		}
 		
 	}; // end writer thread

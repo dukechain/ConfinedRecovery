@@ -28,6 +28,8 @@ import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.LinkedBlockingQueue;
 
+import org.apache.flink.configuration.ConfigConstants;
+import org.apache.flink.configuration.GlobalConfiguration;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.runtime.io.disk.iomanager.BlockChannelReader;
 import org.apache.flink.runtime.io.disk.iomanager.BlockChannelWriter;
@@ -67,6 +69,8 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 	private final int totalNumBuffers;
 	
 	private static ReadEnd readEndBackup = null;
+	
+	private boolean doBackup = false;
 
 	public SerializedUpdateBuffer() {
 		super(-1, HEADER_LENGTH);
@@ -117,6 +121,9 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 		this.ioManager = ioManager;
 		channelEnumerator = ioManager.createChannelEnumerator();
 		readEnds = new ArrayList<ReadEnd>();
+		
+		this.doBackup = 
+				GlobalConfiguration.getBoolean(ConfigConstants.REFINED_RECOVERY, ConfigConstants.REFINED_RECOVERY_DEFAULT);
 	}
 
 	@Override
@@ -163,6 +170,7 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 	}
 
 	public ReadEnd switchBuffers() throws IOException, InterruptedException {
+		System.out.println("switchBuffers");
 		// remove exhausted read ends
 		for (int i = readEnds.size() - 1; i >= 0; --i) {
 			final ReadEnd re = readEnds.get(i);
@@ -180,27 +188,30 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 		final ReadEnd readEnd;
 		if (numBuffersSpilled == 0 && emptyBuffers.size() >= minBuffersForWriteEnd) {
 			// read completely from in-memory segments
-			ArrayDeque<MemorySegment> fullBufferClone = new ArrayDeque<MemorySegment>(64);
-			for(MemorySegment ms: fullBuffers) {
-				if(emptyBuffersBackup.size() > 0) {
-					fullBufferClone.addLast(ms.duplicate(emptyBuffersBackup.take()));
+			System.out.println("IN MEMORY BACKCHANNEL");
+			if(this.doBackup) {
+				System.out.println("DO IN MEMORY BACKUP OF BACKCHANNEL");
+				ArrayDeque<MemorySegment> fullBufferClone = new ArrayDeque<MemorySegment>(64);
+				for(MemorySegment ms: fullBuffers) {
+					if(emptyBuffersBackup.size() > 0) {
+						fullBufferClone.addLast(ms.duplicate(emptyBuffersBackup.take()));
+					}
+					else {
+						fullBufferClone.addLast(ms.duplicate());
+					}
 				}
-				else {
-					fullBufferClone.addLast(ms.duplicate());
+				MemorySegment firstBackup = fullBufferClone.removeFirst();
+				ReadEnd readEndBackupOld = readEndBackup;
+				readEndBackup = new ReadEnd(firstBackup, emptyBuffersBackup, fullBufferClone, null, null, 0);
+				
+				if(readEndBackupOld != null) {
+					readEndBackupOld.forceDispose();
 				}
 			}
 
 			MemorySegment first = fullBuffers.removeFirst();
-			MemorySegment firstBackup = fullBufferClone.removeFirst();
-
 			readEnd = new ReadEnd(first, emptyBuffers, fullBuffers, null, null, 0);
-			
-			ReadEnd readEndBackupOld = readEndBackup;
-			readEndBackup = new ReadEnd(firstBackup, emptyBuffersBackup, fullBufferClone, null, null, 0);
-			
-			if(readEndBackupOld != null) {
-				readEndBackupOld.forceDispose();
-			}
+
 		} else {
 			int toSpill = Math.min(minBuffersForSpilledReadEnd + minBuffersForWriteEnd - emptyBuffers.size(),
 				fullBuffers.size());
@@ -222,11 +233,9 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 			// now close the writer and create the reader
 			currentWriter.close();
 			final BlockChannelReader<MemorySegment> reader = ioManager.createBlockChannelReader(currentWriter.getChannelID());
-			final BlockChannelReader<MemorySegment> reader2 = ioManager.createBlockChannelReader(currentWriter.getChannelID());
 
 			// gather some memory segments to circulate while reading back the data
 			final List<MemorySegment> readSegments = new ArrayList<MemorySegment>();
-			final List<MemorySegment> readSegments2 = new ArrayList<MemorySegment>();
 			try {
 				while (readSegments.size() < minBuffersForSpilledReadEnd) {
 					readSegments.add(emptyBuffers.take());
@@ -237,26 +246,34 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 				reader.readBlock(firstSeg);
 				firstSeg = reader.getReturnQueue().take();
 				
-				while (readSegments2.size() < minBuffersForSpilledReadEnd) {
-					readSegments2.add(emptyBuffersBackup.take());
-				}
-
-				// read the first segment
-				MemorySegment firstSeg2 = readSegments2.remove(readSegments2.size() - 1);
-				reader2.readBlock(firstSeg2);
-				firstSeg2 = reader2.getReturnQueue().take();
-				
 				// create the read end reading one less buffer, because the first buffer is already read back
 				readEnd = new ReadEnd(firstSeg, emptyBuffers, fullBuffers, reader, readSegments,
 						numBuffersSpilled - 1);
-				if(readEndBackup != null) {
-					BlockChannelReader<MemorySegment> bcr = readEndBackup.getSpilledBufferSource();
-					if(bcr != null) {
-						bcr.closeAndDelete();
+				
+				System.out.println("SPILLED BACKUP BACKCHANNEL");
+				if(this.doBackup) {
+					System.out.println("DO SPILLED BACKUP OF BACKCHANNEL");
+					final BlockChannelReader<MemorySegment> reader2 = ioManager.createBlockChannelReader(currentWriter.getChannelID());
+					final List<MemorySegment> readSegments2 = new ArrayList<MemorySegment>();
+					
+					while (readSegments2.size() < minBuffersForSpilledReadEnd) {
+						readSegments2.add(emptyBuffersBackup.take());
 					}
+					
+					// read the first segment
+					MemorySegment firstSeg2 = readSegments2.remove(readSegments2.size() - 1);
+					reader2.readBlock(firstSeg2);
+					firstSeg2 = reader2.getReturnQueue().take();
+					
+					if(readEndBackup != null) {
+						BlockChannelReader<MemorySegment> bcr = readEndBackup.getSpilledBufferSource();
+						if(bcr != null) {
+							bcr.closeAndDelete();
+						}
+					}
+					readEndBackup = new ReadEnd(firstSeg2, emptyBuffersBackup, fullBuffers.clone(), reader2, readSegments2,
+							numBuffersSpilled - 1);
 				}
-				readEndBackup = new ReadEnd(firstSeg2, emptyBuffersBackup, fullBuffers.clone(), reader2, readSegments2,
-						numBuffersSpilled - 1);
 			} catch (InterruptedException e) {
 				throw new RuntimeException(
 					"SerializedUpdateBuffer was interrupted while reclaiming memory by spilling.", e);
