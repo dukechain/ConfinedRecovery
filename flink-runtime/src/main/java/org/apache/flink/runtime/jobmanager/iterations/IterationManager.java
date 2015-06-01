@@ -24,6 +24,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -59,6 +60,7 @@ import org.apache.flink.runtime.execution.librarycache.LibraryCacheManager;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
 import org.apache.flink.runtime.executiongraph.ExecutionVertex;
+import org.apache.flink.runtime.instance.Instance;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.iterative.task.AbstractIterativePactTask;
 import org.apache.flink.runtime.jobgraph.AbstractJobVertex;
@@ -406,12 +408,11 @@ public class IterationManager {
 			// here to avoid concurrent modification exception
 			TaskConfig iterationTaskConfig = new TaskConfig(iterationVertex.getConfiguration());
 			
+			// Construct checkpointPath
 			String checkpointPath = RecoveryUtil.getCheckpointPath()+"checkpoint"; //+iterationVertex.getName().trim();
-			
 			if(retries > 0) {
 				checkpointPath += retries;
 			}
-			
 			checkpointPath += "_"+lastCheckpoint+"/";
 			
 			// save distribution pattern
@@ -419,6 +420,7 @@ public class IterationManager {
 			ResultPartitionType rpt = iterationVertex.getInputs().get(0).getSource().getResultType();
 			
 			// this is used to find out if we iterate over bc variables
+			// TODO Check if this really works in all cases
 			boolean anyRegularOutput = false;
 //			if(iterationVertex.getProducedDataSets().get(0).getConsumers()
 //					.get(0).getDistributionPattern().equals(DistributionPattern.POINTWISE)) {
@@ -442,56 +444,26 @@ public class IterationManager {
 			InputFormatVertex checkpointSolutionSet = null;
 			boolean refinedRecovery = 
 					GlobalConfiguration.getBoolean(ConfigConstants.REFINED_RECOVERY, ConfigConstants.REFINED_RECOVERY_DEFAULT);
+			
+			Map<Integer, Instance> deadInstances = new HashMap<Integer, Instance>();
+			
 			try {
 				
 				// have to create new checkpoint source?
 				if(anyRegularOutput) {
 					
-					int queueToRequest = 0;
-					// used to only read checkpointed partition during refined recovery
-					if(refinedRecovery) {
-						ExecutionJobVertex ejv = eg.getJobVertex(iterationVertex.getID());
-						for(ExecutionVertex ev :  ejv.getTaskVertices())  {
-							if(ev.getCurrentExecutionAttempt().getAssignedResource() != null &&
-									!ev.getCurrentExecutionAttempt().getAssignedResource().getInstance().isAlive()) {
-								
-								queueToRequest = ev.getParallelSubtaskIndex() + 1;
-								checkpointPath += queueToRequest+"/";
-
-								break;
+					// detect dead instances
+					ExecutionJobVertex iterationEjv = eg.getJobVertex(iterationVertex.getID());
+					for(ExecutionVertex ev :  iterationEjv.getTaskVertices())  {
+						if(ev.getCurrentExecutionAttempt().getAssignedResource() != null &&
+								!ev.getCurrentExecutionAttempt().getAssignedResource().getInstance().isAlive()) {
 							
+							if(!deadInstances.containsKey(ev.getParallelSubtaskIndex() + 1)) {
+								deadInstances.put(ev.getParallelSubtaskIndex() + 1, 
+										ev.getCurrentExecutionAttempt().getAssignedResource().getInstance());
 							}
+							
 						}
-					}
-				
-					// create new checkpoint source to attach in front of the iteration
-					checkpoint = createCheckpointInput(jobGraph, checkpointPath, this.parallelism, 
-							iterationTaskConfig.getOutputSerializer(cl), iterationTaskConfig.getOutputType(1, cl), 
-							sourceConfig.getOutputShipStrategy(0), sourceConfig.getOutputComparator(0, cl),
-							sourceConfig.getOutputDataDistribution(0, cl), sourceConfig.getOutputPartitioner(0, cl));
-					
-					jobGraph.addVertex(checkpoint);
-					
-					// create second input for solution set
-					if(iterationTaskConfig.getIsWorksetIteration()) {
-						
-						sourceConfig = new TaskConfig(iterationVertex.getInputs().get(1).getSource().getProducer().getConfiguration());
-						if(sourceConfig.getNumberOfChainedStubs() > 0) {
-							sourceConfig = sourceConfig.getChainedStubConfig(0);
-						}
-						
-						String checkpointSolutionSetPath = RecoveryUtil.getCheckpointPath()+"deltacheckpoint_"+lastCheckpoint+"/";
-						
-						if(refinedRecovery) {
-							checkpointSolutionSetPath += queueToRequest+"/";
-						}
-						
-						checkpointSolutionSet = createCheckpointInput(jobGraph, checkpointSolutionSetPath, this.parallelism, 
-								iterationTaskConfig.getOutputSerializer(cl), iterationTaskConfig.getOutputType(1, cl), 
-								sourceConfig.getOutputShipStrategy(0), sourceConfig.getOutputComparator(0, cl),
-								sourceConfig.getOutputDataDistribution(0, cl), sourceConfig.getOutputPartitioner(0, cl));
-						
-						jobGraph.addVertex(checkpointSolutionSet);
 					}
 					
 					// remove everything before the iteration
@@ -502,12 +474,53 @@ public class IterationManager {
 					// clear iteration inputs
 					iterationVertex.getInputs().clear();
 					
-					// connect checkpoint as new input
-					iterationVertex.connectNewDataSetAsInput(checkpoint, dp, rpt);
+					// create one input for each lost node
+					for(Integer queueToRequest: deadInstances.keySet()) {
+						String checkpointPathTmp = checkpointPath;
+						// if refined recovery read only the right splits
+						if(refinedRecovery) {
+							checkpointPathTmp += queueToRequest+"/";
+						}
+				
+						// create new checkpoint source to attach in front of the iteration
+						checkpoint = createCheckpointInput(jobGraph, checkpointPathTmp, this.parallelism, 
+								iterationTaskConfig.getOutputSerializer(cl), iterationTaskConfig.getOutputType(1, cl), 
+								sourceConfig.getOutputShipStrategy(0), sourceConfig.getOutputComparator(0, cl),
+								sourceConfig.getOutputDataDistribution(0, cl), sourceConfig.getOutputPartitioner(0, cl));
+						
+						jobGraph.addVertex(checkpoint);
+						
+						// create second input for solution set
+						if(iterationTaskConfig.getIsWorksetIteration()) {
+							
+							sourceConfig = new TaskConfig(iterationVertex.getInputs().get(1).getSource().getProducer().getConfiguration());
+							if(sourceConfig.getNumberOfChainedStubs() > 0) {
+								sourceConfig = sourceConfig.getChainedStubConfig(0);
+							}
+							
+							String checkpointSolutionSetPath = RecoveryUtil.getCheckpointPath()+"deltacheckpoint_"+lastCheckpoint+"/";
+							
+							if(refinedRecovery) {
+								checkpointSolutionSetPath += queueToRequest+"/";
+							}
+							
+							checkpointSolutionSet = createCheckpointInput(jobGraph, checkpointSolutionSetPath, this.parallelism, 
+									iterationTaskConfig.getOutputSerializer(cl), iterationTaskConfig.getOutputType(1, cl), 
+									sourceConfig.getOutputShipStrategy(0), sourceConfig.getOutputComparator(0, cl),
+									sourceConfig.getOutputDataDistribution(0, cl), sourceConfig.getOutputPartitioner(0, cl));
+							
+							jobGraph.addVertex(checkpointSolutionSet);
+						}
+						
+						
+						// connect checkpoint as new input
+						iterationVertex.connectNewDataSetAsInput(checkpoint, dp, rpt);
+						
+						// connect second input for solution set
+						if(iterationTaskConfig.getIsWorksetIteration()) {
+							iterationVertex.connectNewDataSetAsInput(checkpointSolutionSet, dp, rpt);
+						}
 					
-					// connect second input for solution set
-					if(iterationTaskConfig.getIsWorksetIteration()) {
-						iterationVertex.connectNewDataSetAsInput(checkpointSolutionSet, dp, rpt);
 					}
 				
 					iterationTaskConfig.setNumberOfIterations(maxNumberOfIterations - currentIteration + 1);
@@ -526,7 +539,7 @@ public class IterationManager {
 									// on dynamic path?
 									if(ejv.getJobVertex().insideIteration()) {
 										
-										int num = 0;
+										//int num = 0;
 										for(IntermediateDataSet ids : ejv.getJobVertex().getProducedDataSets()) {
 											
 											for(JobEdge e : ids.getConsumers()) {
@@ -535,7 +548,7 @@ public class IterationManager {
 												if(e.getDistributionPattern().equals(DistributionPattern.ALL_TO_ALL)) {
 													
 													// currently it is assumed that there dop = 1 * nodes
-													queueToRequest = ev.getParallelSubtaskIndex(); // % ids.getConsumers().size(); 
+													int queueToRequest = ev.getParallelSubtaskIndex(); // % ids.getConsumers().size(); 
 	
 													String path = RecoveryUtil.getLoggingPath()+"/flinklog_"+ids.getId()+"_"+queueToRequest+"_%ITERATION%";
 													
@@ -545,7 +558,7 @@ public class IterationManager {
 													tc.setRefinedRecoveryLostNode(queueToRequest);
 												}
 											}
-											num++;
+											//num++;
 										}
 									}
 								}
@@ -556,16 +569,14 @@ public class IterationManager {
 					// generate new job id
 					jobGraph.setJobID(JobID.generate());
 					
-					
 					this.retries++;
-					
 					
 					// adjust parallelism
 					for(AbstractJobVertex v : jobGraph.getVertices()) {
 						
 						// dont change all reduces
 						if(v.getParallelism() == this.parallelism && this.parallelism > 1) {
-							v.setParallelism(v.getParallelism() - 1);
+							v.setParallelism(v.getParallelism() - deadInstances.size());
 						}
 						
 						// re initialize
@@ -592,7 +603,7 @@ public class IterationManager {
 						//vConfig.setIterationRetry(retries);
 					}
 					// adjust state of this iteration manager
-					this.parallelism--;
+					this.parallelism -= deadInstances.size();
 					this.numberOfEventsUntilEndOfSuperstep = this.numberOfTails * this.parallelism;
 					this.workers.clear();
 					this.currentIteration = this.lastCheckpoint;
@@ -623,7 +634,7 @@ public class IterationManager {
 						
 						// dont change all reduces
 						if(v.getParallelism() == this.parallelism && this.parallelism > 1) {
-							v.setParallelism(v.getParallelism() - 1);
+							v.setParallelism(v.getParallelism() - deadInstances.size());
 						}
 						
 						// re initialize
@@ -643,7 +654,7 @@ public class IterationManager {
 					}
 					
 					// adjust state of this iteration manager
-					this.parallelism--;
+					this.parallelism -= deadInstances.size();
 					this.numberOfEventsUntilEndOfSuperstep = this.numberOfTails * this.parallelism;
 					this.workers.clear();
 					this.currentIteration--;

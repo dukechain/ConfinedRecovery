@@ -385,22 +385,28 @@ public abstract class AbstractIterativePactTask<S extends Function, OT> extends 
 				this.config.getRefinedRecoveryEnd() >= currentIteration()) {
 		
 			TypeInformation<OT> ti = (TypeInformation<OT>) this.config.getOutputType(1, getUserCodeClassLoader());
-			if(this.config.getInfusedOutputPath() != "") {
+			if(this.config.getInfusedOutputPath().length > 0) {
 				
-				String infusePath = this.config.getInfusedOutputPath();
+				String[] infusePaths = this.config.getInfusedOutputPath();
 				
-				CsvInputFormat<OT>  csvinfusing = new CsvInputFormat<OT>(new Path(
-						infusePath.replaceAll("%ITERATION%", ""+this.currentIteration())), ti);
-				
-				System.out.println("infused "+infusePath.replaceAll("%ITERATION%", ""+this.currentIteration()));
-				
-				for(FileInputSplit fis : csvinfusing.createInputSplits(1)) {
-					csvinfusing.open(fis);
-					OT record = ti.createSerializer(getExecutionConfig()).createInstance();
-					while(!csvinfusing.reachedEnd()) {
-						if((record = csvinfusing.nextRecord(record)) != null) {
-							//System.out.println("infused "+record);
-							this.output.collect(record);
+				for(String infusePath : infusePaths) {
+					if(infusePath == "") {
+						continue;
+					}
+					
+					CsvInputFormat<OT>  csvinfusing = new CsvInputFormat<OT>(new Path(
+							infusePath.replaceAll("%ITERATION%", ""+this.currentIteration())), ti);
+					
+					System.out.println("infused "+infusePath.replaceAll("%ITERATION%", ""+this.currentIteration()));
+					
+					for(FileInputSplit fis : csvinfusing.createInputSplits(1)) {
+						csvinfusing.open(fis);
+						OT record = ti.createSerializer(getExecutionConfig()).createInstance();
+						while(!csvinfusing.reachedEnd()) {
+							if((record = csvinfusing.nextRecord(record)) != null) {
+								//System.out.println("infused "+record);
+								this.output.collect(record);
+							}
 						}
 					}
 				}

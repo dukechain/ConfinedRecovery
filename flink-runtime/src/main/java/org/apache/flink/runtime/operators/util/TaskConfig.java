@@ -25,7 +25,9 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 import org.apache.flink.api.common.accumulators.ConvergenceCriterion;
@@ -820,11 +822,11 @@ public class TaskConfig implements Serializable {
 	}
 	
 	public void setInfusedOutputPath(String path) {
-		this.config.setString(INFUSED_OUTPUT, path);
+		this.config.setString(INFUSED_OUTPUT, path+";"+this.config.getString(INFUSED_OUTPUT, ""));
 	}
 	
-	public String getInfusedOutputPath() {
-		return this.config.getString(INFUSED_OUTPUT, "");
+	public String[] getInfusedOutputPath() {
+		return this.config.getString(INFUSED_OUTPUT, "").split(";", 0);
 	}
 	
 	public void setIterationHeadPartialSolutionOrWorksetInputIndex(int inputIndex) {
@@ -1166,7 +1168,8 @@ public class TaskConfig implements Serializable {
 	}
 	
 	public void setRefinedRecoveryLostNode(int refinedRecoveryLostNode) {
-		this.config.setInteger(REFINED_RECORY_LOST_NODE, refinedRecoveryLostNode);
+		this.config.setString(REFINED_RECORY_LOST_NODE, refinedRecoveryLostNode+";"+
+				this.config.getString(REFINED_RECORY_LOST_NODE, ""));
 	}
 	
 	public int getRefinedRecoveryStart() {
@@ -1181,8 +1184,14 @@ public class TaskConfig implements Serializable {
 		return this.config.getInteger(REFINED_RECORY_OLD_DOP, -1);
 	}
 	
-	public int getRefinedRecoveryLostNode() {
-		return this.config.getInteger(REFINED_RECORY_LOST_NODE, -1);
+	public List<Integer> getRefinedRecoveryLostNodes() {
+		List<Integer> l = new ArrayList<Integer>();
+		for(String node : this.config.getString(REFINED_RECORY_LOST_NODE, "").split(";", 0)) {
+			if(node != "") {
+				l.add(Integer.parseInt(node));
+			}
+		}
+		return l;
 	}
 	
 	

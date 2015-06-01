@@ -81,7 +81,7 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 	protected static final String READY_MARKER_FILE_PREFIX = "ready_";
 	protected static final String PROCEED_MARKER_FILE = "proceed";
 
-	protected static final int PARALLELISM = 2;
+	protected static final int PARALLELISM = 3;
 
 	@Test
 	public void testTaskManagerProcessFailure() {
@@ -147,10 +147,12 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 			new PipeForwarder(taskManagerProcess1.getErrorStream(), processOutput1);
 			taskManagerProcess2 = new ProcessBuilder(command).start();
 			new PipeForwarder(taskManagerProcess2.getErrorStream(), processOutput2);
+			taskManagerProcess3 = new ProcessBuilder(command).start();
+			new PipeForwarder(taskManagerProcess3.getErrorStream(), processOutput3);
 
 			// we wait for the JobManager to have the 2 TaskManagers available
 			// wait for at most 20 seconds
-			waitUntilNumTaskManagersAreRegistered(jmActor, 2, 20000);
+			waitUntilNumTaskManagersAreRegistered(jmActor, 3, 20000);
 
 			// the program will set a marker file in each of its parallel tasks once they are ready, so that
 			// this coordinating code is aware of this.
@@ -184,6 +186,9 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 			// kill one of the previous TaskManagers, triggering a failure and recovery
 			taskManagerProcess2.destroy();
 			taskManagerProcess2 = null;
+			
+			taskManagerProcess3.destroy();
+			taskManagerProcess3 = null;
 			
 			System.out.println("DESTROYED");
 
@@ -269,6 +274,15 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 		iteration.setCheckpointInterval(4);
 		
 		DataSet<Tuple1<Integer>> result = iteration.join(data).where(0).equalTo(0).with(new JoinFunction<Tuple1<Integer>, Tuple1<Integer>, Tuple1<Integer>>() {
+
+			@Override
+			public Tuple1<Integer> join(Tuple1<Integer> first,
+					Tuple1<Integer> second) throws Exception {
+				//first.f0 += second.f0 / 2;
+				return first;
+			}
+			
+		}).join(iteration).where(0).equalTo(0).with(new JoinFunction<Tuple1<Integer>, Tuple1<Integer>, Tuple1<Integer>>() {
 
 			@Override
 			public Tuple1<Integer> join(Tuple1<Integer> first,

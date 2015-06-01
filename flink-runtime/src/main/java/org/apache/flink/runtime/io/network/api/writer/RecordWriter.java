@@ -135,10 +135,10 @@ public class RecordWriter<T extends IOReadableWritable> {
 		if(doLogging) {
 			// during refined recovery only keep records that would have been forwarded locally in the
 			// original execution
-			if(config.getRefinedRecoveryLostNode() > -1 && 
+			if(config.getRefinedRecoveryLostNodes().size() > 0 && 
 					IterationHeadPactTask.SUPERSTEP.get() <= config.getRefinedRecoveryEnd() &&
-				channelSelector.selectChannels(record, config.getRefinedRecoveryOldDop())[0] != 
-						config.getRefinedRecoveryLostNode()) {
+				!config.getRefinedRecoveryLostNodes().contains(
+						channelSelector.selectChannels(record, config.getRefinedRecoveryOldDop())[0])) {
 				return;
 			}
 
