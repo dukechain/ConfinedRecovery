@@ -134,7 +134,7 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 					javaCommand,
 					"-Dlog.level=DEBUG",
 					"-Dlog4j.configuration=file:" + tempLogFile.getAbsolutePath(),
-					"-Xms80m", "-Xmx80m",
+					"-Xms120m", "-Xmx120m",
 					"-classpath", getCurrentClasspath(),
 					TaskManagerProcessEntryPoint.class.getName(),
 					String.valueOf(jobManagerPort)
@@ -186,7 +186,10 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 			// kill one of the previous TaskManagers, triggering a failure and recovery
 			taskManagerProcess2.destroy();
 			taskManagerProcess2 = null;
-			
+		
+			deleteFolder(coordinateTempDir);
+			waitForMarkerFiles(coordinateTempDir, PARALLELISM-1, 2000000);
+
 			taskManagerProcess3.destroy();
 			taskManagerProcess3 = null;
 			
@@ -261,7 +264,7 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 		env.getConfig().setExecutionMode(ExecutionMode.PIPELINED);
 	
 		
-		DataSet<Tuple1<Integer>> data = env.generateSequence(1, 10000).map(new MapFunction<Long, Tuple1<Integer>>() {
+		DataSet<Tuple1<Integer>> data = env.generateSequence(1, 20000).map(new MapFunction<Long, Tuple1<Integer>>() {
 			@Override
 			public Tuple1<Integer> map(Long value) throws Exception {
 				// TODO Auto-generated method stub
@@ -305,6 +308,14 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 						int taskIndex = getRuntimeContext().getIndexOfThisSubtask();
 						touchFile(new File(coordinateDir, READY_MARKER_FILE_PREFIX + taskIndex));
 						markerCreated = true;
+						
+						try {
+							Thread.sleep(1000);
+						} catch (InterruptedException e) {
+							// TODO Auto-generated catch block
+							e.printStackTrace();
+						}
+						
 					}
 				}
 			}
@@ -440,7 +451,7 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 				Configuration cfg = new Configuration();
 				cfg.setString(ConfigConstants.JOB_MANAGER_IPC_ADDRESS_KEY, "localhost");
 				cfg.setInteger(ConfigConstants.JOB_MANAGER_IPC_PORT_KEY, jobManagerPort);
-				cfg.setInteger(ConfigConstants.TASK_MANAGER_MEMORY_SIZE_KEY, 30);
+				cfg.setInteger(ConfigConstants.TASK_MANAGER_MEMORY_SIZE_KEY, 50);
 				cfg.setInteger(ConfigConstants.TASK_MANAGER_NETWORK_NUM_BUFFERS_KEY, 100);
 				cfg.setInteger(ConfigConstants.TASK_MANAGER_NUM_TASK_SLOTS, 6);
 
@@ -489,6 +500,20 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 				// terminate
 			}
 		}
+	}
+	
+	public static void deleteFolder(File folder) {
+	    File[] files = folder.listFiles();
+	    if(files!=null) { //some JVMs return null for empty dirs
+	        for(File f: files) {
+	            if(f.isDirectory()) {
+	                deleteFolder(f);
+	            } else {
+	                f.delete();
+	            }
+	        }
+	    }
+	    //folder.delete();
 	}
 
 }

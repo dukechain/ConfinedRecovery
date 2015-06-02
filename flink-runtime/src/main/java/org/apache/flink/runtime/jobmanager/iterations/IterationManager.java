@@ -101,6 +101,8 @@ public class IterationManager {
 	
 	int parallelism;
 	
+	int parallelismAtStart;
+	
 	int maxNumberOfIterations;
 	
 	int currentIteration = 1; // count starts at 1, not 0
@@ -137,6 +139,8 @@ public class IterationManager {
 	
 	private int retries = 0;
 	
+	private Map<Integer, Instance> deadInstances = new HashMap<Integer, Instance>();
+	
 	public IterationManager(JobID jobId, int iterationId, int parallelism, int maxNumberOfIterations, 
 			AccumulatorManager accumulatorManager, ActorRef jobManagerRef, JobManager jobManager,
 			JobGraph jobGraph, LibraryCacheManager libraryCacheManager) throws IOException {
@@ -145,6 +149,7 @@ public class IterationManager {
 		this.iterationId = iterationId;
 		this.numberOfEventsUntilEndOfSuperstep = parallelism;
 		this.parallelism = parallelism;
+		this.parallelismAtStart = parallelism;
 		this.numberOfTails = 1;
 		this.maxNumberOfIterations = maxNumberOfIterations;
 		this.accumulatorManager = accumulatorManager;
@@ -445,7 +450,7 @@ public class IterationManager {
 			boolean refinedRecovery = 
 					GlobalConfiguration.getBoolean(ConfigConstants.REFINED_RECOVERY, ConfigConstants.REFINED_RECOVERY_DEFAULT);
 			
-			Map<Integer, Instance> deadInstances = new HashMap<Integer, Instance>();
+			//Map<Integer, Instance> deadInstances = new HashMap<Integer, Instance>();
 			
 			try {
 				
@@ -576,7 +581,9 @@ public class IterationManager {
 						
 						// dont change all reduces
 						if(v.getParallelism() == this.parallelism && this.parallelism > 1) {
-							v.setParallelism(v.getParallelism() - deadInstances.size());
+							//v.setParallelism(v.getParallelism() - deadInstances.size());
+							v.setParallelism(this.parallelismAtStart - deadInstances.size());
+							
 						}
 						
 						// re initialize
@@ -597,13 +604,13 @@ public class IterationManager {
 							if(refinedRecovery) {
 								vConfig.setRefinedRecoveryEnd(currentIteration - 1);
 								vConfig.setRefinedRecoveryStart(this.lastCheckpoint);
-								vConfig.setRefinedRecoveryOldDop(this.parallelism);
+								vConfig.setRefinedRecoveryOldDop(this.parallelismAtStart);
 							}
 						}
 						//vConfig.setIterationRetry(retries);
 					}
 					// adjust state of this iteration manager
-					this.parallelism -= deadInstances.size();
+					this.parallelism = this.parallelismAtStart - deadInstances.size();
 					this.numberOfEventsUntilEndOfSuperstep = this.numberOfTails * this.parallelism;
 					this.workers.clear();
 					this.currentIteration = this.lastCheckpoint;
@@ -688,6 +695,7 @@ public class IterationManager {
 				e.printStackTrace();
 				throw new RuntimeException("Something went wrong during recovery");
 			}
+			initRerun.set(false);
 		}
 	}
 

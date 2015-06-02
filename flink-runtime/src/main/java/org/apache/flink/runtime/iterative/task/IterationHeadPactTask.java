@@ -268,7 +268,8 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 		boolean isWorksetIteration = config.getIsWorksetIteration();
 		
 		// save backup in case of refined recovery and prevent from reset
-		if(this.config.getRefinedRecoveryEnd() > 0 && SerializedUpdateBuffer.getBackup() != null) {
+		if(this.config.getRefinedRecoveryEnd() > 0 && SerializedUpdateBuffer.getBackup() != null
+				&& backupedReadEnd == null) {
 			
 			backupedReadEnd = SerializedUpdateBuffer.getBackup();
 			SerializedUpdateBuffer.clearBackup();
@@ -536,7 +537,7 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 			SolutionSetBroker.instance().remove(brokerKey);
 			SolutionSetUpdateBarrierBroker.instance().remove(brokerKey);
 
-			if (solutionSet != null) {
+			if (solutionSet != null && solutionSetBackupRecovery == null) {
 				
 				solutionSetBackupRecovery = new ArrayList<X>();
 				
