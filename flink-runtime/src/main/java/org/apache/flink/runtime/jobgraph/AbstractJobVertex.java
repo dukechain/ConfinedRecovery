@@ -413,22 +413,51 @@ public class AbstractJobVertex implements java.io.Serializable {
 		if(this.getInputs().size() == 0) {
 			return false;
 		}
-		boolean allTrue = true;
+		
+		// in chained tasks choose last
+//		if(this.getProducedDataSets().size() == 0) {
+//			return false;
+//		}
+		
+		// if this is the tail dont log
+		if(this.getInvokableClassName()
+				.equalsIgnoreCase("org.apache.flink.runtime.iterative.task.IterationTailPactTask")) {
+			return false;
+		}
+		
+		boolean anyTrue = false;
 		for(JobEdge je : this.getInputs()) {
 			if(je.getSource().getProducer().getInvokableClassName()
 					.equalsIgnoreCase("org.apache.flink.runtime.iterative.task.IterationHeadPactTask")) {
-				return true;
+				anyTrue = true;
 			}
-			if(je.getSource().getProducer().getInvokableClassName()
-					.equalsIgnoreCase("org.apache.flink.runtime.iterative.task.IterationTailPactTask")) {
-				return false;
-			}
-			if(allTrue) {
-				allTrue = isDynamic(je.getSource().getProducer());
+			if(!anyTrue) {
+				anyTrue = isDynamic(je.getSource().getProducer());
 			}
 		}
-		return allTrue;
+		return anyTrue;
 	}
+	
+//	public boolean insideIteration() {
+//		if(this.getInputs().size() == 0) {
+//			return false;
+//		}
+//		boolean allTrue = true;
+//		for(JobEdge je : this.getInputs()) {
+//			if(je.getSource().getProducer().getInvokableClassName()
+//					.equalsIgnoreCase("org.apache.flink.runtime.iterative.task.IterationHeadPactTask")) {
+//				return true;
+//			}
+//			if(je.getSource().getProducer().getInvokableClassName()
+//					.equalsIgnoreCase("org.apache.flink.runtime.iterative.task.IterationTailPactTask")) {
+//				return false;
+//			}
+//			if(allTrue) {
+//				allTrue = isDynamic(je.getSource().getProducer());
+//			}
+//		}
+//		return allTrue;
+//	}
 	
 	/**
 	 * Checks if any predecessor is on the dynamic path of an iteration
@@ -446,10 +475,10 @@ public class AbstractJobVertex implements java.io.Serializable {
 					.equalsIgnoreCase("org.apache.flink.runtime.iterative.task.IterationHeadPactTask")) {
 				return true;
 			}
-			if(je.getSource().getProducer().getInvokableClassName()
-					.equalsIgnoreCase("org.apache.flink.runtime.iterative.task.IterationTailPactTask")) {
-				return false;
-			}
+//			if(je.getSource().getProducer().getInvokableClassName()
+//					.equalsIgnoreCase("org.apache.flink.runtime.iterative.task.IterationTailPactTask")) {
+//				return false;
+//			}
 			if(!anyTrue) {
 				anyTrue = isDynamic(je.getSource().getProducer());
 			}

@@ -561,6 +561,10 @@ public class ExecutionVertex implements Serializable {
 	void notifyStateTransition(ExecutionAttemptID executionId, ExecutionState newState, Throwable error) {
 		getExecutionGraph().notifyExecutionChange(getJobvertexId(), subTaskIndex, executionId, newState, error);
 	}
+	
+	public int getOutputSize() {
+		return  resultPartitions.values().iterator().next().getConsumers().get(0).size();
+	}
 
 	/**
 	 * Creates a task deployment descriptor to deploy a subtask to the given target slot.

@@ -114,6 +114,8 @@ public class IterationSinkPactTask<IT> extends DataSinkTask<IT> {
 				
 				// set new path
 				fileFormat.setOutputFilePath(new Path(pathName+"/"));
+				
+				System.out.println("Checkpointji "+pathName + this.getEnvironment().getIndexInSubtaskGroup()+ " / "+ this.getEnvironment().getNumberOfSubtasks());
 			
 				// do the write
 				super.invoke();

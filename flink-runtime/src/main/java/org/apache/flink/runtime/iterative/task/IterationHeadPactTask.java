@@ -585,6 +585,8 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 	private void feedBackSuperstepResult(DataInputView superstepResult) {
 		
 		if(this.config.getRefinedRecoveryEnd() + 1 == currentIteration()) {
+			
+			System.out.println("FEEDBACK REFINED");
 
 			// reinit local strategies such as sorting (since it gets lost otherwise)
 			// possible performance gain: do sorting in InputViewIteratorCombiner

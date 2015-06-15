@@ -144,6 +144,15 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 			ProcessBuilder pb1 = new ProcessBuilder(command);
 			pb1.redirectOutput(ProcessBuilder.Redirect.INHERIT);
 			taskManagerProcess1 = pb1.start();
+			
+			ProcessBuilder pb2 = new ProcessBuilder(command);
+			pb2.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+			taskManagerProcess2 = pb2.start();
+			
+			ProcessBuilder pb3 = new ProcessBuilder(command);
+			pb3.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+			taskManagerProcess3 = pb3.start();
+			
 			new PipeForwarder(taskManagerProcess1.getErrorStream(), processOutput1);
 			taskManagerProcess2 = new ProcessBuilder(command).start();
 			new PipeForwarder(taskManagerProcess2.getErrorStream(), processOutput2);
@@ -186,12 +195,12 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 			// kill one of the previous TaskManagers, triggering a failure and recovery
 			taskManagerProcess2.destroy();
 			taskManagerProcess2 = null;
-		
-			deleteFolder(coordinateTempDir);
-			waitForMarkerFiles(coordinateTempDir, PARALLELISM-1, 2000000);
-
-			taskManagerProcess3.destroy();
-			taskManagerProcess3 = null;
+//		
+//			deleteFolder(coordinateTempDir);
+//			waitForMarkerFiles(coordinateTempDir, PARALLELISM-1, 2000000);
+//
+//			taskManagerProcess3.destroy();
+//			taskManagerProcess3 = null;
 			
 			System.out.println("DESTROYED");
 

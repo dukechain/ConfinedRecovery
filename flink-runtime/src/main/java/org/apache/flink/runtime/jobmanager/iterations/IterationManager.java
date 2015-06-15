@@ -541,7 +541,7 @@ public class IterationManager {
 								if(ev.getCurrentExecutionAttempt().getAssignedResource() != null &&
 										!ev.getCurrentExecutionAttempt().getAssignedResource().getInstance().isAlive()) {
 									
-									// on dynamic path?
+									// output dynamic (on dynamic path)?
 									if(ejv.getJobVertex().insideIteration()) {
 										
 										//int num = 0;
@@ -552,10 +552,11 @@ public class IterationManager {
 												// ALL_TO_ALL distribution?
 												if(e.getDistributionPattern().equals(DistributionPattern.ALL_TO_ALL)) {
 													
+													//int outputSize = ev.getOutputSize();
 													// currently it is assumed that there dop = 1 * nodes
-													int queueToRequest = ev.getParallelSubtaskIndex(); // % ids.getConsumers().size(); 
+													int queueToRequest = ev.getParallelSubtaskIndex();// % outputSize;
 	
-													String path = RecoveryUtil.getLoggingPath()+"/flinklog_"+ids.getId()+"_"+queueToRequest+"_%ITERATION%";
+													String path = RecoveryUtil.getLoggingPath()+"flinklog_"+ids.getId()+"_"+queueToRequest+"_%ITERATION%";
 													
 													// set infusing path
 													TaskConfig tc = new TaskConfig(e.getSource().getProducer().getConfiguration());
