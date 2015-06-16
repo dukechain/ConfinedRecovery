@@ -244,7 +244,7 @@ public class OperatorTranslation {
 				}
 			}
 			
-			if(anyRegularInput) {
+			if(true || anyRegularInput) {
 				String checkpointPath = RecoveryUtil.getCheckpointPath()+"checkpoint"; //+iterationHead.getName().trim();
 				//System.out.println(checkpointPath);
 				FileOutputFormat<?> outputFormat = new CsvOutputFormat(new Path(checkpointPath), CsvOutputFormat.DEFAULT_LINE_DELIMITER, CsvOutputFormat.DEFAULT_FIELD_DELIMITER);

@@ -195,6 +195,7 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 				for(MemorySegment ms: fullBuffers) {
 					if(emptyBuffersBackup.size() > 0) {
 						fullBufferClone.addLast(ms.duplicate(emptyBuffersBackup.take()));
+						//fullBufferClone.addLast(ms.duplicate());
 					}
 					else {
 						fullBufferClone.addLast(ms.duplicate());
@@ -628,7 +629,9 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 				requestsRemaining--;
 				spilledBufferSource.readBlock(current);
 			} else {
-				emptyBufferTarget.add(current);
+				if(current != null) {
+					emptyBufferTarget.add(current);
+				}
 			}
 
 			// get the next buffer either from the return queue, or the full buffer source

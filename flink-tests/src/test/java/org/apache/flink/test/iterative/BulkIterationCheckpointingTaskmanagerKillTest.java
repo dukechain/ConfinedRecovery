@@ -161,7 +161,7 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 
 			// we wait for the JobManager to have the 2 TaskManagers available
 			// wait for at most 20 seconds
-			waitUntilNumTaskManagersAreRegistered(jmActor, 3, 20000);
+			waitUntilNumTaskManagersAreRegistered(jmActor, 2, 20000);
 
 			// the program will set a marker file in each of its parallel tasks once they are ready, so that
 			// this coordinating code is aware of this.
@@ -271,9 +271,10 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 		env.setParallelism(PARALLELISM);
 		env.setNumberOfExecutionRetries(1);
 		env.getConfig().setExecutionMode(ExecutionMode.PIPELINED);
+		env.getConfig().disableObjectReuse();
 	
 		
-		DataSet<Tuple1<Integer>> data = env.generateSequence(1, 20000).map(new MapFunction<Long, Tuple1<Integer>>() {
+		DataSet<Tuple1<Integer>> data = env.generateSequence(1, 10000).map(new MapFunction<Long, Tuple1<Integer>>() {
 			@Override
 			public Tuple1<Integer> map(Long value) throws Exception {
 				// TODO Auto-generated method stub
@@ -286,15 +287,6 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 		iteration.setCheckpointInterval(4);
 		
 		DataSet<Tuple1<Integer>> result = iteration.join(data).where(0).equalTo(0).with(new JoinFunction<Tuple1<Integer>, Tuple1<Integer>, Tuple1<Integer>>() {
-
-			@Override
-			public Tuple1<Integer> join(Tuple1<Integer> first,
-					Tuple1<Integer> second) throws Exception {
-				//first.f0 += second.f0 / 2;
-				return first;
-			}
-			
-		}).join(iteration).where(0).equalTo(0).with(new JoinFunction<Tuple1<Integer>, Tuple1<Integer>, Tuple1<Integer>>() {
 
 			@Override
 			public Tuple1<Integer> join(Tuple1<Integer> first,

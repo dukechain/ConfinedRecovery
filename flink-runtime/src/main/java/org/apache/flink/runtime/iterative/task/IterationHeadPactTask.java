@@ -54,6 +54,7 @@ import org.apache.flink.runtime.iterative.io.SerializedUpdateBuffer;
 import org.apache.flink.runtime.messages.JobManagerMessages;
 import org.apache.flink.runtime.operators.RegularPactTask;
 import org.apache.flink.runtime.operators.hash.CompactingHashTable;
+import org.apache.flink.runtime.operators.util.LocalStrategy;
 import org.apache.flink.runtime.operators.util.TaskConfig;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.MutableObjectIterator;
@@ -103,7 +104,7 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 
 	private TypeSerializerFactory<X> solutionTypeSerializer;
 
-	private int feedbackDataInput; // workset or bulk partial solution
+	//private int feedbackDataInput; // workset or bulk partial solution
 
 	private RuntimeAccumulatorRegistry accumulatorRegistry;
 	private Map<String, Accumulator<?, ?>> lastGlobalState = null;
@@ -586,21 +587,34 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 		
 		if(this.config.getRefinedRecoveryEnd() + 1 == currentIteration()) {
 			
-			System.out.println("FEEDBACK REFINED");
+			System.out.println("FEEDBACK REFINED "+this.feedbackDataInput);
 
 			// reinit local strategies such as sorting (since it gets lost otherwise)
 			// possible performance gain: do sorting in InputViewIteratorCombiner
-			int numInputs = driver.getNumberOfInputs();
-			try {
-				if(!isWorksetIteration) {
-					initLocalStrategies(numInputs);
+//			int numInputs = driver.getNumberOfInputs();
+//			try {
+//				if(!isWorksetIteration) {
+//					initLocalStrategies(numInputs);
+//				}
+//			} catch (Exception e1) {
+//				e1.printStackTrace();
+//			}
+			
+			//includeFromReset(feedbackDataInput);
+			TypeComparator<Y> comp = null;
+			System.out.println("STRAT "+this.config.getInputLocalStrategy(this.feedbackDataInput));
+			if(this.config.getInputLocalStrategy(this.feedbackDataInput) != null 
+					&& this.config.getInputLocalStrategy(this.feedbackDataInput).equals(LocalStrategy.SORT)) {
+				try {
+					comp = getLocalStrategyComparator(this.feedbackDataInput);
+				} catch (Exception e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
 				}
-			} catch (Exception e1) {
-				e1.printStackTrace();
 			}
 			
 			this.inputs[this.feedbackDataInput] = new InputViewIteratorCombiner<Y>(
-					superstepResult, backupedReadEnd, this.feedbackTypeSerializer.getSerializer());
+					superstepResult, backupedReadEnd, this.feedbackTypeSerializer.getSerializer(), comp);
 			
 			// clear backup file
 //			BlockChannelReader<MemorySegment> bcr = backupedReadEnd.getSpilledBufferSource();
@@ -614,6 +628,7 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 //			}
 		}
 		else {
+			//excludeFromReset(feedbackDataInput);
 			this.inputs[this.feedbackDataInput] = new InputViewIterator<Y>(
 				superstepResult, this.feedbackTypeSerializer.getSerializer());
 		}

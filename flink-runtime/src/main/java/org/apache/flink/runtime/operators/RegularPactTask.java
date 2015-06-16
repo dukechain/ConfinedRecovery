@@ -967,6 +967,7 @@ public class RegularPactTask<S extends Function, OT> extends AbstractInvokable i
 						this.tempBarriers[i].close();
 					}
 
+					//System.out.println("initInputLocalStrategy "+i);
 					// recreate the local strategy
 					initInputLocalStrategy(i);
 
@@ -986,8 +987,12 @@ public class RegularPactTask<S extends Function, OT> extends AbstractInvokable i
 	protected void excludeFromReset(int inputNum) {
 		this.excludeFromReset[inputNum] = true;
 	}
+	
+	protected void includeFromReset(int inputNum) {
+		this.excludeFromReset[inputNum] = false;
+	}
 
-	private void initInputLocalStrategy(int inputNum) throws Exception {
+	protected void initInputLocalStrategy(int inputNum) throws Exception {
 		// check if there is already a strategy
 		if (this.localStrategies[inputNum] != null) {
 			throw new IllegalStateException();
@@ -1058,7 +1063,7 @@ public class RegularPactTask<S extends Function, OT> extends AbstractInvokable i
 		}
 	}
 
-	private <T> TypeComparator<T> getLocalStrategyComparator(int inputNum) throws Exception {
+	protected <T> TypeComparator<T> getLocalStrategyComparator(int inputNum) throws Exception {
 		TypeComparatorFactory<T> compFact = this.config.getInputComparator(inputNum, getUserCodeClassLoader());
 		if (compFact == null) {
 			throw new Exception("Missing comparator factory for local strategy on input " + inputNum);

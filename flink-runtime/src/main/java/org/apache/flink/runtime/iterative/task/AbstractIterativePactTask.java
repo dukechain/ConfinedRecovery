@@ -82,6 +82,8 @@ public abstract class AbstractIterativePactTask<S extends Function, OT> extends 
 	private int superstepNum = 1;
 	
 	private volatile boolean terminationRequested;
+	
+	protected int feedbackDataInput; 
 
 	// --------------------------------------------------------------------------------------------
 	// Main life cycle methods that implement the iterative behavior
@@ -142,6 +144,11 @@ public abstract class AbstractIterativePactTask<S extends Function, OT> extends 
 				final String name = getTaskConfig().getBroadcastInputName(i);
 				readAndSetBroadcastInput(i, name, this.runtimeUdfContext, superstepNum, true);
 			}
+			
+			// reinit local strategies for refined recovery
+//			if(this.config.getRefinedRecoveryEnd() + 1 == currentIteration()) {
+//				initInputLocalStrategy(feedbackDataInput);
+//			}
 		}
 		
 		

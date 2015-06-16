@@ -24,7 +24,6 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -415,9 +414,10 @@ public class IterationManager {
 			
 			// Construct checkpointPath
 			String checkpointPath = RecoveryUtil.getCheckpointPath()+"checkpoint"; //+iterationVertex.getName().trim();
-			if(retries > 0) {
-				checkpointPath += retries;
-			}
+			// TODO handle this nice
+//			if(retries > 0) {
+//				checkpointPath += retries;
+//			}
 			checkpointPath += "_"+lastCheckpoint+"/";
 			
 			// save distribution pattern
@@ -426,18 +426,25 @@ public class IterationManager {
 			
 			// this is used to find out if we iterate over bc variables
 			// TODO Check if this really works in all cases
-			boolean anyRegularOutput = false;
+			boolean bcIteration = false;
+			
+			if(iterationTaskConfig.getOutputShipStrategy(0).equals(ShipStrategyType.BROADCAST)) {
+				bcIteration = true;
+			}
+			
 //			if(iterationVertex.getProducedDataSets().get(0).getConsumers()
 //					.get(0).getDistributionPattern().equals(DistributionPattern.POINTWISE)) {
 //				anyRegularOutput = true;
 //			}
 			
-			for(IntermediateDataSet e : iterationVertex.getProducedDataSets()) {
-				if(e.getConsumers().get(0).getDistributionPattern().equals(DistributionPattern.POINTWISE)) {
-					anyRegularOutput = true;
-				}
-			}
-			
+//			for(IntermediateDataSet e : iterationVertex.getProducedDataSets()) {
+//				if(e.getConsumers().get(0).getDistributionPattern().equals(DistributionPattern.POINTWISE)) {
+//					anyRegularOutput = true;
+//				}
+//			}
+//			
+//			anyRegularOutput = false;
+//			
 			TaskConfig sourceConfig = new TaskConfig(iterationVertex.getInputs().get(0).getSource().getProducer().getConfiguration());
 			if(sourceConfig.getNumberOfChainedStubs() > 0) {
 				sourceConfig = sourceConfig.getChainedStubConfig(0);
@@ -455,7 +462,7 @@ public class IterationManager {
 			try {
 				
 				// have to create new checkpoint source?
-				if(anyRegularOutput) {
+				if(!bcIteration) {
 					
 					// detect dead instances
 					ExecutionJobVertex iterationEjv = eg.getJobVertex(iterationVertex.getID());
@@ -556,7 +563,7 @@ public class IterationManager {
 													// currently it is assumed that there dop = 1 * nodes
 													int queueToRequest = ev.getParallelSubtaskIndex();// % outputSize;
 	
-													String path = RecoveryUtil.getLoggingPath()+"flinklog_"+ids.getId()+"_"+queueToRequest+"_%ITERATION%";
+													String path = RecoveryUtil.getLoggingPath()+"/flinklog_"+ids.getId()+"_"+queueToRequest+"_%ITERATION%";
 													
 													// set infusing path
 													TaskConfig tc = new TaskConfig(e.getSource().getProducer().getConfiguration());

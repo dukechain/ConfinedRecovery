@@ -299,7 +299,7 @@ public class VertexCentricIteration<VertexKey extends Comparable<VertexKey> & Se
 				this.initialVertices.iterate(this.maximumNumberOfIterations);
 		iteration.name(name);
 		iteration.setParallelism(parallelism);
-		//iteration.setCheckpointInterval(4);
+		iteration.setCheckpointInterval(4);
 		
 		// build the messaging function (co group)
 		CoGroupOperator<?, ?, Tuple2<VertexKey, Message>> messages;
