@@ -152,12 +152,13 @@ public class RecordWriter<T extends IOReadableWritable> {
 				if(logOutput != null && writer.getPartition().getNumberOfSubpartitions() > 1 
 						&& IterationHeadPactTask.SUPERSTEP.get() > -1 && writer.getPartition().getOwnQueueToRequest() != targetChannel
 						&& writer.getPartition().getOwnQueueToRequest() != -1) {
-					System.out.println("YEAH2");
+					//System.out.println("YEAH2");
 					if(record instanceof SerializationDelegate) {
 						SerializationDelegate<T> sd = (SerializationDelegate<T>) record;
 						if(sd.getInstance() instanceof Tuple) {
-							logOutput[targetChannel].requestQueue.add((Tuple) sd.getInstance());//.writeRecord((Tuple) sd.getInstance());
-							//logOutput[targetChannel].output.writeRecord((Tuple) sd.getInstance());
+							//System.out.println(sd.getInstance());
+							//logOutput[targetChannel].requestQueue.add((Tuple) sd.getInstance());//.writeRecord((Tuple) sd.getInstance());
+							logOutput[targetChannel].output.writeRecord((Tuple) sd.getInstance());
 						}
 					}
 				}
@@ -425,6 +426,13 @@ public class RecordWriter<T extends IOReadableWritable> {
 				throw new RuntimeException();
 			}
 			req.clear();
+			
+			try {
+				output.close();
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 		}
 		
 	}; // end writer thread

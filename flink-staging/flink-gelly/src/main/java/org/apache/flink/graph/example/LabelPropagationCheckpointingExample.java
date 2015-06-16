@@ -58,6 +58,7 @@ public class LabelPropagationCheckpointingExample implements ProgramDescription 
 
 		// Set up the execution environment
 		ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
+		env.getConfig().disableObjectReuse();
 
 		// Set up the graph
 		DataSet<Vertex<Long, Long>> vertices = getVertexDataSet(env);
