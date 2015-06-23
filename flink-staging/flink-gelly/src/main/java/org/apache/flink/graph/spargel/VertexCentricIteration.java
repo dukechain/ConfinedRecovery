@@ -228,7 +228,7 @@ public class VertexCentricIteration<VertexKey extends Comparable<VertexKey> & Se
 		
 		return this.createBulkResult();
 		
-//		// prepare some type information
+		// prepare some type information
 //		TypeInformation<Vertex<VertexKey, VertexValue>> vertexTypes = initialVertices.getType();
 //		TypeInformation<VertexKey> keyType = ((TupleTypeInfo<?>) initialVertices.getType()).getTypeAt(0);
 //		TypeInformation<Tuple2<VertexKey, Message>> messageTypeInfo = new TupleTypeInfo<Tuple2<VertexKey,Message>>(keyType, messageType);

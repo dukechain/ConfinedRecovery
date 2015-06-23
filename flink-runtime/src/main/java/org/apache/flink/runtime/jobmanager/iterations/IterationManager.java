@@ -461,22 +461,23 @@ public class IterationManager {
 			
 			try {
 				
+				// detect dead instances
+				ExecutionJobVertex iterationEjv = eg.getJobVertex(iterationVertex.getID());
+				for(ExecutionVertex ev :  iterationEjv.getTaskVertices())  {
+					if(ev.getCurrentExecutionAttempt().getAssignedResource() != null &&
+							!ev.getCurrentExecutionAttempt().getAssignedResource().getInstance().isAlive()) {
+						
+						if(!deadInstances.containsKey(ev.getParallelSubtaskIndex() + 1)) {
+							deadInstances.put(ev.getParallelSubtaskIndex() + 1, 
+									ev.getCurrentExecutionAttempt().getAssignedResource().getInstance());
+						}
+						
+					}
+				}
+				
 				// have to create new checkpoint source?
 				if(!bcIteration) {
 					
-					// detect dead instances
-					ExecutionJobVertex iterationEjv = eg.getJobVertex(iterationVertex.getID());
-					for(ExecutionVertex ev :  iterationEjv.getTaskVertices())  {
-						if(ev.getCurrentExecutionAttempt().getAssignedResource() != null &&
-								!ev.getCurrentExecutionAttempt().getAssignedResource().getInstance().isAlive()) {
-							
-							if(!deadInstances.containsKey(ev.getParallelSubtaskIndex() + 1)) {
-								deadInstances.put(ev.getParallelSubtaskIndex() + 1, 
-										ev.getCurrentExecutionAttempt().getAssignedResource().getInstance());
-							}
-							
-						}
-					}
 					
 					// remove everything before the iteration
 					for(JobEdge edge : iterationVertex.getInputs()) {

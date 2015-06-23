@@ -62,6 +62,9 @@ public final class BlobLibraryCacheManager extends TimerTask implements LibraryC
 	/** Registered entries per job */
 	private final Map<JobID, LibraryCacheEntry> cacheEntries = new HashMap<JobID, LibraryCacheEntry>();
 	
+	/** Registered entries per job */
+	private final Map<JobID, URLClassLoader> classLoaderBackup = new HashMap<JobID, URLClassLoader>();
+	
 	/** Map to store the number of reference to a specific file */
 	private final Map<BlobKey, Integer> blobKeyReferenceCounters = new HashMap<BlobKey, Integer>();
 
@@ -125,7 +128,17 @@ public final class BlobLibraryCacheManager extends TimerTask implements LibraryC
 					throw new IOException("Library cache could not register the user code libraries.", t);
 				}
 				
-				URLClassLoader classLoader = new FlinkUserCodeClassLoader(urls);
+				URLClassLoader classLoader;
+				if(classLoaderBackup.containsKey(jobId)) {
+					System.out.println("Reuse Classloader for Job "+jobId);
+					classLoader = classLoaderBackup.get(jobId);
+				}
+				else {
+					System.out.println("New Classloader for Job "+jobId);
+					classLoader = new FlinkUserCodeClassLoader(urls);
+					classLoaderBackup.put(jobId, classLoader);
+				}
+				
 				cacheEntries.put(jobId, new LibraryCacheEntry(requiredJarFiles, classLoader, task));
 			}
 			else {
