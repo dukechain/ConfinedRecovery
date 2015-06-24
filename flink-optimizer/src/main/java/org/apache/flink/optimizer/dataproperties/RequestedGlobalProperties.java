@@ -371,6 +371,7 @@ public final class RequestedGlobalProperties implements Cloneable {
 		}
 		
 		final GlobalProperties inGlobals = channel.getSource().getGlobalProperties();
+		// MARKUS
 		// if we have no global parallelism change, check if we have already compatible global properties
 		if (!globalDopChange && isMetBy(inGlobals)) {
 			DataExchangeMode em = DataExchangeMode.select(exchangeMode, ShipStrategyType.FORWARD, breakPipeline);

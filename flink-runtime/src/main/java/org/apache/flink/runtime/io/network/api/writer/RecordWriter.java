@@ -107,10 +107,6 @@ public class RecordWriter<T extends IOReadableWritable> {
 		else if(writer.getPartition().getOwnQueueToRequest() == 0 && writer.getPartition().getNumberOfSubpartitions() > 1) {
 			foreignIndex = 1;
 		}
-		
-		// log outgoing messages in case of refined recovery
-		this.doLogging = 
-				GlobalConfiguration.getBoolean(ConfigConstants.REFINED_RECOVERY, ConfigConstants.REFINED_RECOVERY_DEFAULT);
 
 		/**
 		 * The runtime exposes a channel abstraction for the produced results
@@ -122,32 +118,37 @@ public class RecordWriter<T extends IOReadableWritable> {
 			serializers[i] = new SpanningRecordSerializer<T>();
 		}
 		
+		this.ioManager = new IOManagerAsync();
+		this.config = new TaskConfig(config);
+		
+		// log outgoing messages in case of refined recovery, but not during refined recovery
+		this.doLogging = 
+				(GlobalConfiguration.getBoolean(ConfigConstants.REFINED_RECOVERY, ConfigConstants.REFINED_RECOVERY_DEFAULT)
+						&& this.config.getRefinedRecoveryLostNodes().size() == 0);
+		
 		if(doLogging) {
 			logOutput = new LogWriterThread[writer.getPartition().getNumberOfSubpartitions()];
 		}
-		
-		this.ioManager = new IOManagerAsync();
-		this.config = new TaskConfig(config);
 	}
 
 	public void emit(T record) throws IOException, InterruptedException {
 		
+		// during refined recovery only keep records that would have been forwarded locally in the
+		// original execution
+		if(config.getRefinedRecoveryLostNodes().size() > 0 && 
+				IterationHeadPactTask.SUPERSTEP.get() <= config.getRefinedRecoveryEnd() &&
+			!config.getRefinedRecoveryLostNodes().contains(
+					channelSelector.selectChannels(record, config.getRefinedRecoveryOldDop())[0])) {
+			return;
+		}
+		
 		if(doLogging) {
-			// during refined recovery only keep records that would have been forwarded locally in the
-			// original execution
-			if(config.getRefinedRecoveryLostNodes().size() > 0 && 
-					IterationHeadPactTask.SUPERSTEP.get() <= config.getRefinedRecoveryEnd() &&
-				!config.getRefinedRecoveryLostNodes().contains(
-						channelSelector.selectChannels(record, config.getRefinedRecoveryOldDop())[0])) {
-				return;
-			}
-
 			this.setupLogOutput();
 		}
 		
 		for (int targetChannel : channelSelector.selectChannels(record, numChannels)) {
 			
-			if(doLogging) {
+			if(doLogging ) {
 				// log outgoing messages for refined recovery
 				if(logOutput != null && writer.getPartition().getNumberOfSubpartitions() > 1 
 						&& IterationHeadPactTask.SUPERSTEP.get() > -1 && writer.getPartition().getOwnQueueToRequest() != targetChannel
@@ -280,6 +281,8 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 					String logPath = RecoveryUtil.getLoggingPath();
 					logPath += "/flinklog_"+writer.getIntermediateDataSetID()+"_"+i+"_"+IterationHeadPactTask.SUPERSTEP.get();
+					
+					System.out.println("logging to "+logPath);
 					
 					CsvOutputFormat<Tuple> csvOut = new CsvOutputFormat<Tuple>(new Path(logPath));
 					csvOut.setWriteMode(WriteMode.OVERWRITE);

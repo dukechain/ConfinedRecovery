@@ -20,9 +20,6 @@ package org.apache.flink.runtime.jobmanager.iterations;
 
 import static akka.dispatch.Futures.future;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -234,18 +231,6 @@ public class IterationManager {
 
 			System.out.println("SIGNAL NEXT "+currentIteration);
 			
-			if(currentIteration == 6) {
-				try {
-					new FileOutputStream(new File("C:\\Users\\Markus\\AppData\\Local\\Temp\\ad419e67-1b58-43fe-be35-6f2063c373555")).close();
-				} catch (FileNotFoundException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-			}
-			
 			if (log.isInfoEnabled()) {
 				log.info("signaling that all workers are done in iteration [" + currentIteration+ "]");
 			}
@@ -391,6 +376,8 @@ public class IterationManager {
 	 */
 	public void initRecovery() {
 		
+		System.out.println("Init Recovery");
+		
 		if(initRerun.compareAndSet(false, true)) {
 			
 			ExecutionGraph eg = jobManager.currentJobs().get(jobId).get()._1;
@@ -411,6 +398,10 @@ public class IterationManager {
 			
 			// here to avoid concurrent modification exception
 			TaskConfig iterationTaskConfig = new TaskConfig(iterationVertex.getConfiguration());
+			if(iterationTaskConfig.getNumberOfChainedStubs() > 0) {
+				iterationTaskConfig = iterationTaskConfig.getChainedStubConfig(iterationTaskConfig.getNumberOfChainedStubs()-1);
+			}
+			
 			
 			// Construct checkpointPath
 			String checkpointPath = RecoveryUtil.getCheckpointPath()+"checkpoint"; //+iterationVertex.getName().trim();
@@ -447,7 +438,7 @@ public class IterationManager {
 //			
 			TaskConfig sourceConfig = new TaskConfig(iterationVertex.getInputs().get(0).getSource().getProducer().getConfiguration());
 			if(sourceConfig.getNumberOfChainedStubs() > 0) {
-				sourceConfig = sourceConfig.getChainedStubConfig(0);
+				sourceConfig = sourceConfig.getChainedStubConfig(sourceConfig.getNumberOfChainedStubs()-1);
 			}
 			
 			ClassLoader cl = this.libraryCacheManager.getClassLoader(jobId);
@@ -456,6 +447,8 @@ public class IterationManager {
 			InputFormatVertex checkpointSolutionSet = null;
 			boolean refinedRecovery = 
 					GlobalConfiguration.getBoolean(ConfigConstants.REFINED_RECOVERY, ConfigConstants.REFINED_RECOVERY_DEFAULT);
+			
+			System.out.println("refined? "+refinedRecovery);
 			
 			//Map<Integer, Instance> deadInstances = new HashMap<Integer, Instance>();
 			
@@ -474,6 +467,8 @@ public class IterationManager {
 						
 					}
 				}
+				
+				System.out.println("dead Instances? "+deadInstances.size());
 				
 				// have to create new checkpoint source?
 				if(!bcIteration) {
@@ -494,6 +489,17 @@ public class IterationManager {
 						if(refinedRecovery) {
 							checkpointPathTmp += queueToRequest+"/";
 						}
+						
+						System.out.println("Checkpoint3 "+checkpointPathTmp);
+						System.out.println("cl "+cl);
+						System.out.println("iterationTaskConfig "+iterationTaskConfig.getConfiguration());
+						System.out.println("sourceConfig "+sourceConfig.getConfiguration());
+						System.out.println("iterationTaskConfig.getOutputSerializer(cl) "+iterationTaskConfig.getOutputSerializer(cl));
+						System.out.println("iterationTaskConfig.getOutputType(1, cl) "+iterationTaskConfig.getOutputType(1, cl));
+						System.out.println("sourceConfig.getOutputShipStrategy(0) "+sourceConfig.getOutputShipStrategy(0));
+						System.out.println("ourceConfig.getOutputComparator(0, cl) "+sourceConfig.getOutputComparator(0, cl));
+						System.out.println("ourceConfig.getOutputDataDistribution(0, cl) "+sourceConfig.getOutputDataDistribution(0, cl));
+						System.out.println("sourceConfig.getOutputPartitioner(0, cl) "+sourceConfig.getOutputPartitioner(0, cl));
 				
 						// create new checkpoint source to attach in front of the iteration
 						checkpoint = createCheckpointInput(jobGraph, checkpointPathTmp, this.parallelism, 
@@ -501,7 +507,42 @@ public class IterationManager {
 								sourceConfig.getOutputShipStrategy(0), sourceConfig.getOutputComparator(0, cl),
 								sourceConfig.getOutputDataDistribution(0, cl), sourceConfig.getOutputPartitioner(0, cl));
 						
+						System.out.println("createdCheckpointInput");
+						
 						jobGraph.addVertex(checkpoint);
+						
+						System.out.println("addedVertex");
+						
+						
+						// Hack to reestablish hash partitioning when required
+						System.out.println("Hack to reestablish hash partitioning when required");
+						System.out.println("set output pattern "+dp);
+						System.out.println("set output comparator "+sourceConfig.getOutputComparator(0, cl));
+						iterationTaskConfig.setOutputShipStrategy(sourceConfig.getOutputShipStrategy(0), 0);
+						iterationTaskConfig.setOutputComparator(sourceConfig.getOutputComparator(0, cl), 0);
+						
+						for(JobEdge jee : iterationVertex.getProducedDataSets().get(0).getConsumers()) {
+							System.out.println(jee);
+							if(sourceConfig.getOutputShipStrategy(0).equals(ShipStrategyType.FORWARD)) {
+								jee.setDistributionPattern(DistributionPattern.POINTWISE);
+							}
+							else {
+								jee.setDistributionPattern(DistributionPattern.ALL_TO_ALL);
+							}
+						}
+
+//						for(IntermediateDataSet idds : iterationVertex.getProducedDataSets()) {
+//							System.out.println(idds);
+//							for(JobEdge jee : idds.getConsumers()) {
+//								System.out.println(jee);
+//								if(sourceConfig.getOutputShipStrategy(0).equals(ShipStrategyType.FORWARD)) {
+//									jee.setDistributionPattern(DistributionPattern.POINTWISE);
+//								}
+//								else {
+//									jee.setDistributionPattern(DistributionPattern.ALL_TO_ALL);
+//								}
+//							}
+//						}
 						
 						// create second input for solution set
 						if(iterationTaskConfig.getIsWorksetIteration()) {
@@ -517,6 +558,8 @@ public class IterationManager {
 								checkpointSolutionSetPath += queueToRequest+"/";
 							}
 							
+							System.out.println("checkpointSolutionSetPath "+checkpointSolutionSetPath);
+							
 							checkpointSolutionSet = createCheckpointInput(jobGraph, checkpointSolutionSetPath, this.parallelism, 
 									iterationTaskConfig.getOutputSerializer(cl), iterationTaskConfig.getOutputType(1, cl), 
 									sourceConfig.getOutputShipStrategy(0), sourceConfig.getOutputComparator(0, cl),
@@ -525,7 +568,7 @@ public class IterationManager {
 							jobGraph.addVertex(checkpointSolutionSet);
 						}
 						
-						
+						System.out.println("connectNewDataSetAsInput");
 						// connect checkpoint as new input
 						iterationVertex.connectNewDataSetAsInput(checkpoint, dp, rpt);
 						
@@ -535,11 +578,14 @@ public class IterationManager {
 						}
 					
 					}
+					
+					System.out.println("Checkpoints created and connected");
 				
 					iterationTaskConfig.setNumberOfIterations(maxNumberOfIterations - currentIteration + 1);
 					
 					
 					if(refinedRecovery) {
+						System.out.println("Looking for logs to infuse");
 						for(ExecutionJobVertex ejv : eg.getAllVertices().values()) {
 							
 							for(ExecutionVertex ev : ejv.getTaskVertices())  {
@@ -549,22 +595,32 @@ public class IterationManager {
 								if(ev.getCurrentExecutionAttempt().getAssignedResource() != null &&
 										!ev.getCurrentExecutionAttempt().getAssignedResource().getInstance().isAlive()) {
 									
+									System.out.println("dead "+ev);
+									
 									// output dynamic (on dynamic path)?
 									if(ejv.getJobVertex().insideIteration()) {
+										
+										System.out.println("inside iteration "+ev);
 										
 										//int num = 0;
 										for(IntermediateDataSet ids : ejv.getJobVertex().getProducedDataSets()) {
 											
 											for(JobEdge e : ids.getConsumers()) {
 												
+												System.out.println(ejv+" "+e.getDistributionPattern());
+												
 												// ALL_TO_ALL distribution?
 												if(e.getDistributionPattern().equals(DistributionPattern.ALL_TO_ALL)) {
+													
+													System.out.println("ALL_TO_ALL "+e);
 													
 													//int outputSize = ev.getOutputSize();
 													// currently it is assumed that there dop = 1 * nodes
 													int queueToRequest = ev.getParallelSubtaskIndex();// % outputSize;
 	
 													String path = RecoveryUtil.getLoggingPath()+"/flinklog_"+ids.getId()+"_"+queueToRequest+"_%ITERATION%";
+													
+													System.out.println("infuse "+path+" at "+e.getSource().getProducer());
 													
 													// set infusing path
 													TaskConfig tc = new TaskConfig(e.getSource().getProducer().getConfiguration());
@@ -585,6 +641,8 @@ public class IterationManager {
 					
 					this.retries++;
 					
+					System.out.println("adjusting parallelism");
+					
 					// adjust parallelism
 					for(AbstractJobVertex v : jobGraph.getVertices()) {
 						
@@ -595,6 +653,7 @@ public class IterationManager {
 							
 						}
 						
+						System.out.println("re init "+v);
 						// re initialize
 						try {
 							v.initializeOnMaster(libraryCacheManager.getClassLoader(jobId));
@@ -618,6 +677,8 @@ public class IterationManager {
 						}
 						//vConfig.setIterationRetry(retries);
 					}
+					System.out.println("adjusted parallelsim and initializeOnMaster");
+					
 					// adjust state of this iteration manager
 					this.parallelism = this.parallelismAtStart - deadInstances.size();
 					this.numberOfEventsUntilEndOfSuperstep = this.numberOfTails * this.parallelism;
@@ -700,7 +761,11 @@ public class IterationManager {
 					}, AkkaUtils.globalExecutionContext());
 				}
 				
-			} catch (ClassNotFoundException e) {
+			} catch (Exception e) {
+				System.out.println("Something went wrong during recovery");
+				System.out.println(e);
+				System.out.println(e.getMessage());
+				e.printStackTrace(System.out);
 				e.printStackTrace();
 				throw new RuntimeException("Something went wrong during recovery");
 			}
@@ -712,19 +777,29 @@ public class IterationManager {
 			int numSubTasks, TypeSerializerFactory<?> serializer, TypeInformation<X> typeInfo, ShipStrategyType shipStrategy,
 			TypeComparatorFactory<?> comparator, DataDistribution dataDistribution, Partitioner<?> partitioner) {
 		
+		System.out.println("createCheckpointInput");
+		
 		CsvInputFormat<X> pointsInFormat = new CsvInputFormat<X>(new Path(checkpointPath), typeInfo);
 		InputFormatVertex pointsInput = createInput(pointsInFormat, checkpointPath, "[CHECKPOINT] path: "+checkpointPath, jobGraph, numSubTasks);
+		
+		System.out.println("createdInput");
 		{
 			TaskConfig taskConfig = new TaskConfig(pointsInput.getConfiguration());
 			taskConfig.addOutputShipStrategy(shipStrategy);
 			taskConfig.setOutputSerializer(serializer);
+			
+			System.out.println("setOutputComparator");
 
 			if(comparator != null) {
 				taskConfig.setOutputComparator(comparator, 0);
 			}
+			
+			System.out.println("setOutputDataDistribution");
 			if(dataDistribution != null) {
 				taskConfig.setOutputDataDistribution(dataDistribution, 0);
 			}
+			
+			System.out.println("setOutputPartitioner");
 			if(partitioner != null) {
 				taskConfig.setOutputPartitioner(partitioner, 0);
 			}
@@ -736,6 +811,7 @@ public class IterationManager {
 	public static <T extends FileInputFormat<?>> InputFormatVertex createInput(T stub, String path, String name, JobGraph graph,
 			int parallelism)
 	{
+		System.out.println("createInput");
 		stub.setFilePath(path);
 		return createInput(new UserCodeObjectWrapper<T>(stub), name, graph, parallelism);
 	}
@@ -743,6 +819,7 @@ public class IterationManager {
 	private static <T extends InputFormat<?,?>> InputFormatVertex createInput(UserCodeWrapper<T> stub, String name, JobGraph graph,
 			int parallelism)
 	{
+		System.out.println("createInput2");
 		InputFormatVertex inputVertex = new InputFormatVertex(name);
 		
 		inputVertex.setInvokableClass(DataSourceTask.class);
@@ -751,6 +828,7 @@ public class IterationManager {
 		TaskConfig inputConfig = new TaskConfig(inputVertex.getConfiguration());
 		inputConfig.setStubWrapper(stub);
 		
+		System.out.println("return inputVertex");
 		return inputVertex;
 	}
 	

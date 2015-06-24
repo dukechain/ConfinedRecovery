@@ -49,6 +49,7 @@ import org.apache.flink.runtime.io.network.api.writer.ChannelSelector;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.UnionInputGate;
+import org.apache.flink.runtime.iterative.task.AbstractIterativePactTask;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.memorymanager.MemoryManager;
 import org.apache.flink.runtime.messages.JobManagerMessages;
@@ -503,6 +504,10 @@ public class RegularPactTask<S extends Function, OT> extends AbstractInvokable i
 
 			// start all chained tasks
 			RegularPactTask.openChainedTasks(this.chainedTasks, this);
+			
+			if(this instanceof AbstractIterativePactTask) {
+				((AbstractIterativePactTask) this ).infuseRecoveryRecords(); 
+			}
 
 			// open stub implementation
 			if (this.stub != null) {

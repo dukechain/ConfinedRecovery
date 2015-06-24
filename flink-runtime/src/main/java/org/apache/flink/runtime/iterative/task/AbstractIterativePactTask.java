@@ -153,7 +153,7 @@ public abstract class AbstractIterativePactTask<S extends Function, OT> extends 
 		
 		
 		// infuse records during refined recovery?
-		infuseRecoveryRecords();
+		//infuseRecoveryRecords(); moved to regularPactTask
 
 		// call the parent to execute the superstep
 		super.run();
@@ -386,7 +386,7 @@ public abstract class AbstractIterativePactTask<S extends Function, OT> extends 
 		return serializerFactory.getSerializer();
 	}
 	
-	protected void infuseRecoveryRecords() throws ClassNotFoundException, IOException {
+	public void infuseRecoveryRecords() throws ClassNotFoundException, IOException {
 		
 		if(this.config.getRefinedRecoveryStart() <= currentIteration() &&
 				this.config.getRefinedRecoveryEnd() >= currentIteration()) {

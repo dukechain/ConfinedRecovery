@@ -248,7 +248,7 @@ public class OperatorTranslation {
 				String checkpointPath = RecoveryUtil.getCheckpointPath()+"checkpoint"; //+iterationHead.getName().trim();
 				//System.out.println(checkpointPath);
 				FileOutputFormat<?> outputFormat = new CsvOutputFormat(new Path(checkpointPath), CsvOutputFormat.DEFAULT_LINE_DELIMITER, CsvOutputFormat.DEFAULT_FIELD_DELIMITER);
-				outputFormat.setIterationWriteMode(new IterationWriteMode(2, iterationHead.getCheckpointInterval()));
+				outputFormat.setIterationWriteMode(new IterationWriteMode(10, iterationHead.getCheckpointInterval()));
 				
 				iterationOperator.addIterationSink(
 						translate(iterationHead.output((OutputFormat<T>) outputFormat)));
@@ -310,7 +310,7 @@ public class OperatorTranslation {
 			String checkpointPath = RecoveryUtil.getCheckpointPath()+"checkpoint"; //+iterationHead.getName().trim();
 			//System.out.println(checkpointPath);
 			FileOutputFormat<?> outputFormat = new CsvOutputFormat(new Path(checkpointPath), CsvOutputFormat.DEFAULT_LINE_DELIMITER, CsvOutputFormat.DEFAULT_FIELD_DELIMITER);
-			outputFormat.setIterationWriteMode(new IterationWriteMode(2, iterationHead.getCheckpointInterval()));
+			outputFormat.setIterationWriteMode(new IterationWriteMode(10, iterationHead.getCheckpointInterval()));
 			
 			iterationOperator.addIterationSink(
 					translate(iterationHead.getWorkset().output((OutputFormat<W>) outputFormat)));

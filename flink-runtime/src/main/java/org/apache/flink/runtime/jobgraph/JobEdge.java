@@ -32,7 +32,7 @@ public class JobEdge implements java.io.Serializable {
 	private final AbstractJobVertex target;
 
 	/** The distribution pattern that should be used for this job edge. */
-	private final DistributionPattern distributionPattern;
+	private DistributionPattern distributionPattern;
 	
 	/** The data set at the source of the edge, may be null if the edge is not yet connected*/
 	private IntermediateDataSet source;
@@ -101,6 +101,10 @@ public class JobEdge implements java.io.Serializable {
 	 */
 	public DistributionPattern getDistributionPattern(){
 		return this.distributionPattern;
+	}
+	
+	public void setDistributionPattern(DistributionPattern dp){
+		this.distributionPattern = dp;
 	}
 	
 	/**
