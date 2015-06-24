@@ -18,20 +18,19 @@
 
 package org.apache.flink.api.common.io;
 
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.Serializable;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.apache.flink.api.common.operators.base.FileDataSinkBase;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.GlobalConfiguration;
 import org.apache.flink.core.fs.FSDataOutputStream;
 import org.apache.flink.core.fs.FileSystem;
-import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.fs.FileSystem.WriteMode;
+import org.apache.flink.core.fs.Path;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The abstract base class for all output formats that are file based. Contains the logic to open/close the target
@@ -352,13 +351,13 @@ public abstract class FileOutputFormat<IT> implements OutputFormat<IT>, Initiali
 		if (this.fileCreated) {
 			this.fileCreated = false;
 			
-			try {
-				FileSystem.get(this.actualFilePath.toUri()).delete(actualFilePath, false);
-			} catch (FileNotFoundException e) {
-				// ignore, may not be visible yet or may be already removed
-			} catch (Throwable t) {
-				LOG.error("Could not remove the incomplete file " + actualFilePath);
-			}
+//			try {
+//				FileSystem.get(this.actualFilePath.toUri()).delete(actualFilePath, false);
+//			} catch (FileNotFoundException e) {
+//				// ignore, may not be visible yet or may be already removed
+//			} catch (Throwable t) {
+//				LOG.error("Could not remove the incomplete file " + actualFilePath);
+//			}
 		}
 	}
 	

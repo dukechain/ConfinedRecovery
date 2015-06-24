@@ -516,18 +516,26 @@ public class IterationManager {
 						
 						// Hack to reestablish hash partitioning when required
 						System.out.println("Hack to reestablish hash partitioning when required");
-						System.out.println("set output pattern "+dp);
-						System.out.println("set output comparator "+sourceConfig.getOutputComparator(0, cl));
-						iterationTaskConfig.setOutputShipStrategy(sourceConfig.getOutputShipStrategy(0), 0);
-						iterationTaskConfig.setOutputComparator(sourceConfig.getOutputComparator(0, cl), 0);
 						
-						for(JobEdge jee : iterationVertex.getProducedDataSets().get(0).getConsumers()) {
-							System.out.println(jee);
-							if(sourceConfig.getOutputShipStrategy(0).equals(ShipStrategyType.FORWARD)) {
-								jee.setDistributionPattern(DistributionPattern.POINTWISE);
+						// dont change output strategy if it is already shuffling
+						if(iterationTaskConfig.getOutputShipStrategy(0).equals(ShipStrategyType.FORWARD)) {
+							iterationTaskConfig.setOutputShipStrategy(sourceConfig.getOutputShipStrategy(0), 0);
+							// if source has a comparator we probably need it to reestablish the outgoing partitioning
+							if(sourceConfig.getOutputComparator(0, cl) != null) {
+								iterationTaskConfig.setOutputComparator(sourceConfig.getOutputComparator(0, cl), 0);
 							}
-							else {
-								jee.setDistributionPattern(DistributionPattern.ALL_TO_ALL);
+							
+							System.out.println("setOutputShipStrategy "+sourceConfig.getOutputShipStrategy(0));
+							System.out.println("set output comparator "+sourceConfig.getOutputComparator(0, cl));
+							
+							for(JobEdge jee : iterationVertex.getProducedDataSets().get(0).getConsumers()) {
+								System.out.println(jee);
+								if(sourceConfig.getOutputShipStrategy(0).equals(ShipStrategyType.FORWARD)) {
+									jee.setDistributionPattern(DistributionPattern.POINTWISE);
+								}
+								else {
+									jee.setDistributionPattern(DistributionPattern.ALL_TO_ALL);
+								}
 							}
 						}
 

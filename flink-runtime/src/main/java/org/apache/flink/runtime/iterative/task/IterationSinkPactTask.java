@@ -90,9 +90,9 @@ public class IterationSinkPactTask<IT> extends DataSinkTask<IT> {
 			this.isCheckpoint = false;
 			
 			// delete old file if window is full
-			if(writtenFiles.size() == fileFormat.getIterationWriteMode().getWriteWindow()) {
-				fileFormat.getOutputFilePath().getFileSystem().delete(writtenFiles.remove(0), true);
-			}
+//			if(writtenFiles.size() == fileFormat.getIterationWriteMode().getWriteWindow()) {
+//				fileFormat.getOutputFilePath().getFileSystem().delete(writtenFiles.remove(0), true);
+//			}
 			
 			// only write if writeInterval fits
 			if(superstepNum % fileFormat.getIterationWriteMode().getWriteInterval() == 0) {
