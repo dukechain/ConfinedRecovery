@@ -32,6 +32,10 @@ public final class ConfigConstants {
 	
 	public static final boolean REFINED_RECOVERY_DEFAULT = true;
 	
+	public static final String DELTA_CHECKPOINT = "delta.checkpoint";
+	
+	public static final int DELTA_CHECKPOINT_DEFAULT = 0;
+	
 	// ---------------------------- Parallelism -------------------------------
 
 	/**

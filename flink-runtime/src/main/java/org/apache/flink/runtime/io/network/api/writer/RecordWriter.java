@@ -129,6 +129,13 @@ public class RecordWriter<T extends IOReadableWritable> {
 		if(doLogging) {
 			logOutput = new LogWriterThread[writer.getPartition().getNumberOfSubpartitions()];
 		}
+		else {
+			System.out.println("getRefinedRecoveryLostNodes, old dop "+this.config.getRefinedRecoveryOldDop());
+			for(Integer i : this.config.getRefinedRecoveryLostNodes()) {
+				System.out.println(i);
+			}
+		}
+			
 	}
 
 	public void emit(T record) throws IOException, InterruptedException {
