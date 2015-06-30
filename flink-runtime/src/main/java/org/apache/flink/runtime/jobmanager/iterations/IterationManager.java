@@ -71,6 +71,7 @@ import org.apache.flink.runtime.jobmanager.JobManager;
 import org.apache.flink.runtime.jobmanager.accumulators.AccumulatorManager;
 import org.apache.flink.runtime.messages.JobManagerMessages;
 import org.apache.flink.runtime.operators.DataSourceTask;
+import org.apache.flink.runtime.operators.DataSourceWithSolutionSetBackupTask;
 import org.apache.flink.runtime.operators.shipping.ShipStrategyType;
 import org.apache.flink.runtime.operators.util.TaskConfig;
 import org.apache.flink.util.InstantiationUtil;
@@ -443,6 +444,15 @@ public class IterationManager {
 				sourceConfig = sourceConfig.getChainedStubConfig(sourceConfig.getNumberOfChainedStubs()-1);
 			}
 			
+			// save input config for workset iterations
+			TaskConfig sourceConfigSolutionSet = null;
+			if(iterationTaskConfig.getIsWorksetIteration()) {
+				sourceConfigSolutionSet = new TaskConfig(iterationVertex.getInputs().get(1).getSource().getProducer().getConfiguration());
+				if(sourceConfigSolutionSet.getNumberOfChainedStubs() > 0) {
+					sourceConfigSolutionSet = sourceConfigSolutionSet.getChainedStubConfig(sourceConfigSolutionSet.getNumberOfChainedStubs()-1);
+				}
+			}
+			
 			ClassLoader cl = this.libraryCacheManager.getClassLoader(jobId);
 
 			InputFormatVertex checkpoint;
@@ -489,6 +499,7 @@ public class IterationManager {
 						System.out.println("moving files for refined recovery");
 						FileSystem fs = FileSystem.get((new Path(checkpointPath)).toUri());
 						String dirPath = new URI(checkpointPath+"load").getPath();
+						fs.delete(new Path(dirPath), true);
 						fs.mkdirs(new Path(dirPath));
 						System.out.println("mkdirs "+dirPath);
 						
@@ -509,8 +520,8 @@ public class IterationManager {
 					System.out.println("iterationTaskConfig.getOutputSerializer(cl) "+iterationTaskConfig.getOutputSerializer(cl));
 					System.out.println("iterationTaskConfig.getOutputType(1, cl) "+iterationTaskConfig.getOutputType(1, cl));
 					System.out.println("sourceConfig.getOutputShipStrategy(0) "+sourceConfig.getOutputShipStrategy(0));
-					System.out.println("ourceConfig.getOutputComparator(0, cl) "+sourceConfig.getOutputComparator(0, cl));
-					System.out.println("ourceConfig.getOutputDataDistribution(0, cl) "+sourceConfig.getOutputDataDistribution(0, cl));
+					System.out.println("sourceConfig.getOutputComparator(0, cl) "+sourceConfig.getOutputComparator(0, cl));
+					System.out.println("sourceConfig.getOutputDataDistribution(0, cl) "+sourceConfig.getOutputDataDistribution(0, cl));
 					System.out.println("sourceConfig.getOutputPartitioner(0, cl) "+sourceConfig.getOutputPartitioner(0, cl));
 			
 					// create new checkpoint source to attach in front of the iteration
@@ -567,10 +578,10 @@ public class IterationManager {
 					// create second input for solution set
 					if(iterationTaskConfig.getIsWorksetIteration()) {
 						
-						sourceConfig = new TaskConfig(iterationVertex.getInputs().get(1).getSource().getProducer().getConfiguration());
-						if(sourceConfig.getNumberOfChainedStubs() > 0) {
-							sourceConfig = sourceConfig.getChainedStubConfig(0);
-						}
+//						sourceConfig = new TaskConfig(iterationVertex.getInputs().get(1).getSource().getProducer().getConfiguration());
+//						if(sourceConfig.getNumberOfChainedStubs() > 0) {
+//							sourceConfig = sourceConfig.getChainedStubConfig(0);
+//						}
 						
 						String checkpointSolutionSetPath = RecoveryUtil.getCheckpointPath()+"deltacheckpoint_"+lastCheckpoint+"/";
 						
@@ -579,6 +590,7 @@ public class IterationManager {
 							System.out.println("moving delta files for refined recovery");
 							FileSystem fs = FileSystem.get((new Path(checkpointPath)).toUri());
 							String dirPath = new URI(checkpointSolutionSetPath+"load").getPath();
+							fs.delete(new Path(dirPath), true);
 							fs.mkdirs(new Path(dirPath));
 							System.out.println("mkdirs "+dirPath);
 							
@@ -593,10 +605,22 @@ public class IterationManager {
 						
 						System.out.println("checkpointSolutionSetPath "+checkpointSolutionSetPath);
 						
+						System.out.println("Checkpoint "+checkpointPath);
+						System.out.println("sourceConfig "+sourceConfigSolutionSet.getConfiguration());
+						System.out.println("sourceConfig.getOutputShipStrategy(0) "+sourceConfigSolutionSet.getOutputShipStrategy(0));
+						System.out.println("sourceConfig.getOutputComparator(0, cl) "+sourceConfigSolutionSet.getOutputComparator(0, cl));
+						System.out.println("sourceConfig.getOutputDataDistribution(0, cl) "+sourceConfigSolutionSet.getOutputDataDistribution(0, cl));
+						System.out.println("sourceConfig.getOutputPartitioner(0, cl) "+sourceConfigSolutionSet.getOutputPartitioner(0, cl));
+						
 						checkpointSolutionSet = createCheckpointInput(jobGraph, checkpointSolutionSetPath, this.parallelism, 
 								iterationTaskConfig.getOutputSerializer(cl), iterationTaskConfig.getOutputType(1, cl), 
-								sourceConfig.getOutputShipStrategy(0), sourceConfig.getOutputComparator(0, cl),
-								sourceConfig.getOutputDataDistribution(0, cl), sourceConfig.getOutputPartitioner(0, cl));
+								sourceConfigSolutionSet.getOutputShipStrategy(0), sourceConfigSolutionSet.getOutputComparator(0, cl),
+								sourceConfigSolutionSet.getOutputDataDistribution(0, cl), sourceConfigSolutionSet.getOutputPartitioner(0, cl));
+						
+						// to repartition the old in-memory solution set
+						if(refinedRecovery) {
+							checkpointSolutionSet.setInvokableClass(DataSourceWithSolutionSetBackupTask.class);
+						}
 						
 						jobGraph.addVertex(checkpointSolutionSet);
 					}

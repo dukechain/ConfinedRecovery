@@ -38,6 +38,7 @@ public class InputViewIteratorCombiner<E> implements MutableObjectIterator<E>
 	private TypeComparator<E> comp;
 	
 	private int i = 0;
+	private int j = 0;
 	
 	private E next1 = null;
 	private E next2 = null;
@@ -50,9 +51,11 @@ public class InputViewIteratorCombiner<E> implements MutableObjectIterator<E>
 		try {
 			if(inputView != null) {
 				next1 = this.serializer.deserialize(this.inputView);
+				System.out.println("next1 "+next1);
 			}
 			if(inputView2 != null) {
 				next2 = this.serializer.deserialize(this.inputView2);
+				System.out.println("next2 "+next2);
 			}
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
@@ -80,24 +83,30 @@ public class InputViewIteratorCombiner<E> implements MutableObjectIterator<E>
 			//System.out.println("COMP1 "+next1+" "+next2);
 			
 			E t = next1;
+			i++;
 			
 			try {
 				next1 = this.serializer.deserialize(reuse, this.inputView);
 			}
 			catch (EOFException e) {
 				next1 = null;
+				System.out.println("SWITCH "+i+" "+j);
 			}	
 			return t;
 		}
 		else {
 			//System.out.println("COMP2 "+next1+" "+next2);
 			E t = next2;
+			j++;
+			
 			try {
 				next2 = this.serializer.deserialize(reuse, this.inputView2);
 			}
 			catch (EOFException e) {
 				next2 = null;
+				System.out.println("SWITCH "+i+" "+j);
 			}
+			//System.out.println("T "+t);
 			return t;
 		}
 	}

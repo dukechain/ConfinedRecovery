@@ -344,6 +344,7 @@ public class CompactingHashTable<T> extends AbstractMutableHashTable<T>{
 
 		// go over the complete input and insert every element into the hash table
 		while (this.running && ((record = input.next(record)) != null)) {
+			System.out.println("B "+record);
 			insertOrReplaceRecord(record, tmp);
 		}
 	}

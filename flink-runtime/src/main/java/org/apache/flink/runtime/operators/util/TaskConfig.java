@@ -1172,6 +1172,10 @@ public class TaskConfig implements Serializable {
 				this.config.getString(REFINED_RECORY_LOST_NODE, ""));
 	}
 	
+	public void setRefinedRecoveryLostNodes(String refinedRecoveryLostNodes) {
+		this.config.setString(REFINED_RECORY_LOST_NODE, refinedRecoveryLostNodes);
+	}
+	
 	public int getRefinedRecoveryStart() {
 		return this.config.getInteger(REFINED_RECORY_START, -1);
 	}

@@ -121,7 +121,7 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 	
 	private static SerializedUpdateBuffer.ReadEnd backupedReadEnd = null;
 	
-	private static ArrayList solutionSetBackupRecovery = null; // if workset iteration
+	public static ArrayList solutionSetBackupRecovery = null; // if workset iteration
 	
 	// --------------------------------------------------------------------------------------------
 
@@ -381,10 +381,10 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 						// feedback during refined recovery
 						if(this.config.getRefinedRecoveryEnd() + 1 == currentIteration()) {
 							if(solutionSetBackupRecovery != null) {
-								for(Object next : solutionSetBackupRecovery) {
-									X tempRef = (X) getOutputSerializer().createInstance();
-									solutionSet.insertOrReplaceRecord((X) next, tempRef);
-								}
+//								for(Object next : solutionSetBackupRecovery) {
+//									X tempRef = (X) getOutputSerializer().createInstance();
+//									solutionSet.insertOrReplaceRecord((X) next, tempRef);
+//								}
 								// free for garbage collection
 								solutionSetBackupRecovery = null;
 							}

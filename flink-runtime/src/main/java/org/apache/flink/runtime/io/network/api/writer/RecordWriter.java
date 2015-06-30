@@ -126,6 +126,9 @@ public class RecordWriter<T extends IOReadableWritable> {
 				(GlobalConfiguration.getBoolean(ConfigConstants.REFINED_RECOVERY, ConfigConstants.REFINED_RECOVERY_DEFAULT)
 						&& this.config.getRefinedRecoveryLostNodes().size() == 0);
 		
+		System.out.println(this+" getRefinedRecoveryLostNodes "+this.config.getRefinedRecoveryLostNodes().size());
+		System.out.println(this + " strategy "+this.config.getOutputShipStrategy(0));
+		
 		if(doLogging) {
 			logOutput = new LogWriterThread[writer.getPartition().getNumberOfSubpartitions()];
 		}
@@ -165,8 +168,8 @@ public class RecordWriter<T extends IOReadableWritable> {
 						SerializationDelegate<T> sd = (SerializationDelegate<T>) record;
 						if(sd.getInstance() instanceof Tuple) {
 							//System.out.println(sd.getInstance());
-							//logOutput[targetChannel].requestQueue.add((Tuple) sd.getInstance());//.writeRecord((Tuple) sd.getInstance());
-							logOutput[targetChannel].output.writeRecord((Tuple) sd.getInstance());
+							logOutput[targetChannel].requestQueue.add((Tuple) sd.getInstance());//.writeRecord((Tuple) sd.getInstance());
+							//logOutput[targetChannel].output.writeRecord((Tuple) sd.getInstance());
 						}
 					}
 				}
