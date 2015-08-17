@@ -59,6 +59,7 @@ import org.apache.flink.runtime.iterative.concurrent.SuperstepKickoffLatch;
 import org.apache.flink.runtime.iterative.concurrent.SuperstepKickoffLatchBroker;
 import org.apache.flink.runtime.iterative.convergence.WorksetEmptyConvergenceCriterion;
 import org.apache.flink.runtime.iterative.io.SerializedUpdateBuffer;
+import org.apache.flink.runtime.iterative.io.SerializedUpdateBuffer.ReadEnd;
 import org.apache.flink.runtime.messages.JobManagerMessages;
 import org.apache.flink.runtime.operators.RegularPactTask;
 import org.apache.flink.runtime.operators.hash.CompactingHashTable;
@@ -372,6 +373,9 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 							+ currentIteration() + "]"));
 				}
 				
+				log.info(formatLogString("starting iteration ["
+						+ currentIteration() + "]"));
+				
 				if(isWorksetIteration) {
 					// keep a reference for refined recovery
 					Broker<Object> solutionSetBroker = SolutionSetBroker.instance();
@@ -595,6 +599,48 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends
 	}
 
 	private void feedBackSuperstepResult(DataInputView superstepResult) {
+		
+		int chpt = GlobalConfiguration.getInteger(ConfigConstants.DELTA_CHECKPOINT, ConfigConstants.DELTA_CHECKPOINT_DEFAULT);
+		if(chpt > 0 && this.currentIteration() % chpt == 0) {
+			System.out.println("Started Blocking Checkpoint2 "+System.currentTimeMillis());
+			log.info("Started Blocking Checkpoint");
+			
+			InputViewIterator<Y> materializingIteration = new InputViewIterator<Y>(
+					((ReadEnd) superstepResult).getReader(), this.feedbackTypeSerializer.getSerializer());
+			
+			String pathName = "hdfs://cloud-11:45010/checkpoint/";
+			pathName += "blockingcheckpoint_"+this.currentIteration()+"/";
+			
+			final FileOutputFormat format = new CsvOutputFormat(new Path(pathName));
+			format.setWriteMode(WriteMode.OVERWRITE);
+			format.setOutputDirectoryMode(OutputDirectoryMode.PARONLY);
+			
+			System.out.println(pathName);
+			
+			long l = 0;
+			try {
+				
+				format.open(this.getEnvironment().getIndexInSubtaskGroup(), this.getEnvironment().getNumberOfSubtasks());
+				
+				Y next = materializingIteration.next();
+				while(next != null) {
+					
+					format.writeRecord(next);
+					next = materializingIteration.next();
+					l++;
+				}
+				
+				format.close();
+			
+			}
+			catch( Exception e) {
+				e.printStackTrace();
+			}
+			finally {
+				System.out.println("Finished Blocking Checkpoint "+l+" "+System.currentTimeMillis());
+				log.info("Finished Blocking Checkpoint");
+			}
+		}
 		
 		if(this.config.getRefinedRecoveryEnd() + 1 == currentIteration()) {
 			

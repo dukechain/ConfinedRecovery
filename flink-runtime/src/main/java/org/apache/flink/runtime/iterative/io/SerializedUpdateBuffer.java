@@ -25,6 +25,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
+import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.LinkedBlockingQueue;
 
@@ -203,7 +204,7 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 				}
 				MemorySegment firstBackup = fullBufferClone.removeFirst();
 				ReadEnd readEndBackupOld = readEndBackup;
-				readEndBackup = new ReadEnd(firstBackup, emptyBuffersBackup, fullBufferClone, null, null, 0);
+				readEndBackup = new ReadEnd(firstBackup, emptyBuffersBackup, fullBufferClone, null, null, null, 0);
 				
 				if(readEndBackupOld != null) {
 					readEndBackupOld.forceDispose();
@@ -211,7 +212,7 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 			}
 
 			MemorySegment first = fullBuffers.removeFirst();
-			readEnd = new ReadEnd(first, emptyBuffers, fullBuffers, null, null, 0);
+			readEnd = new ReadEnd(first, emptyBuffers, fullBuffers, null, null, null, 0);
 
 		} else {
 			int toSpill = Math.min(minBuffersForSpilledReadEnd + minBuffersForWriteEnd - emptyBuffers.size(),
@@ -234,6 +235,7 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 			// now close the writer and create the reader
 			currentWriter.close();
 			final BlockChannelReader<MemorySegment> reader = ioManager.createBlockChannelReader(currentWriter.getChannelID());
+			final BlockChannelReader<MemorySegment> reader3 = ioManager.createBlockChannelReader(currentWriter.getChannelID());
 
 			// gather some memory segments to circulate while reading back the data
 			final List<MemorySegment> readSegments = new ArrayList<MemorySegment>();
@@ -248,13 +250,14 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 				firstSeg = reader.getReturnQueue().take();
 				
 				// create the read end reading one less buffer, because the first buffer is already read back
-				readEnd = new ReadEnd(firstSeg, emptyBuffers, fullBuffers, reader, readSegments,
+				readEnd = new ReadEnd(firstSeg, emptyBuffers, fullBuffers, reader, reader3, readSegments,
 						numBuffersSpilled - 1);
 				
 				System.out.println("SPILLED BACKUP BACKCHANNEL");
 				if(this.doBackup) {
 					System.out.println("DO SPILLED BACKUP OF BACKCHANNEL");
 					final BlockChannelReader<MemorySegment> reader2 = ioManager.createBlockChannelReader(currentWriter.getChannelID());
+					final BlockChannelReader<MemorySegment> reader4 = ioManager.createBlockChannelReader(currentWriter.getChannelID());
 					final List<MemorySegment> readSegments2 = new ArrayList<MemorySegment>();
 					
 					while (readSegments2.size() < minBuffersForSpilledReadEnd) {
@@ -272,7 +275,7 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 							bcr.closeAndDelete();
 						}
 					}
-					readEndBackup = new ReadEnd(firstSeg2, emptyBuffersBackup, fullBuffers.clone(), reader2, readSegments2,
+					readEndBackup = new ReadEnd(firstSeg2, emptyBuffersBackup, fullBuffers.clone(), reader2, reader4, readSegments2,
 							numBuffersSpilled - 1);
 				}
 			} catch (InterruptedException e) {
@@ -584,28 +587,38 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 //		}
 //	}
 	
-	public static final class ReadEnd extends AbstractPagedInputView {
+	public static class ReadEnd extends AbstractPagedInputView {
 
-		private final LinkedBlockingQueue<MemorySegment> emptyBufferTarget;
+		final LinkedBlockingQueue<MemorySegment> emptyBufferTarget;
 
 		public final Deque<MemorySegment> fullBufferSource;
 
-		private final BlockChannelReader<MemorySegment> spilledBufferSource;
+		final BlockChannelReader<MemorySegment> spilledBufferSource;
+		
+		final BlockChannelReader<MemorySegment> spilledBufferSource2;
 
-		private int spilledBuffersRemaining;
+		int spilledBuffersRemaining;
 
-		private int requestsRemaining;
+		int requestsRemaining;
+		
+		MemorySegment firstMemSegment;
+		List<MemorySegment> emptyBuffers;
+		int numBuffersSpilled;
 
 		private ReadEnd(MemorySegment firstMemSegment, LinkedBlockingQueue<MemorySegment> emptyBufferTarget,
 										Deque<MemorySegment> fullBufferSource, BlockChannelReader<MemorySegment> spilledBufferSource,
-										List<MemorySegment> emptyBuffers, int numBuffersSpilled)
+										BlockChannelReader<MemorySegment> spilledBufferSource2, List<MemorySegment> emptyBuffers, int numBuffersSpilled)
 			throws IOException {
 			super(firstMemSegment, firstMemSegment.getInt(0), HEADER_LENGTH);
 
 			this.emptyBufferTarget = emptyBufferTarget;
 			this.fullBufferSource = fullBufferSource;
+			this.firstMemSegment = firstMemSegment;
+			this.emptyBuffers = emptyBuffers;
+			this.numBuffersSpilled = numBuffersSpilled;
 
 			this.spilledBufferSource = spilledBufferSource;
+			this.spilledBufferSource2 = spilledBufferSource2;
 
 			requestsRemaining = numBuffersSpilled;
 			this.spilledBuffersRemaining = numBuffersSpilled;
@@ -630,7 +643,7 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 				spilledBufferSource.readBlock(current);
 			} else {
 				if(current != null) {
-					emptyBufferTarget.add(current);
+					emptyBufferTarget.offer(current);
 				}
 			}
 
@@ -643,13 +656,14 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 					throw new RuntimeException("Read End was interrupted while waiting for spilled buffer.", e);
 				}
 			} else if (fullBufferSource.size() > 0) {
+				//System.out.println("numFull "+fullBufferSource.size());
 				return fullBufferSource.removeFirst();
 			} else {
 				clear();
 
 				// delete the channel, if we had one
 				if (spilledBufferSource != null) {
-					//spilledBufferSource.closeAndDelete();
+					spilledBufferSource.closeAndDelete();
 				}
 
 				throw new EOFException();
@@ -712,11 +726,76 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 			final MemorySegment current = getCurrentSegment();
 			clear();
 			if (current != null) {
-				emptyBufferTarget.add(current);
+				emptyBufferTarget.offer(current);
 			}
 
 			// add all remaining memory
 			emptyBufferTarget.addAll(fullBufferSource);
 		}
+		
+		public ReadEndReader getReader() {
+			try {
+				return new ReadEndReader(firstMemSegment, emptyBufferTarget, fullBufferSource, spilledBufferSource2, emptyBuffers, numBuffersSpilled);
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			return null;
+		}
+	}
+	
+	public static class ReadEndReader extends ReadEnd {
+
+		Iterator<MemorySegment> it;
+		
+		private ReadEndReader(MemorySegment firstMemSegment, LinkedBlockingQueue<MemorySegment> emptyBufferTarget,
+				Deque<MemorySegment> fullBufferSource, BlockChannelReader<MemorySegment> spilledBufferSource,
+				List<MemorySegment> emptyBuffers, int numBuffersSpilled)
+			throws IOException {
+			super(firstMemSegment, emptyBufferTarget, fullBufferSource, spilledBufferSource, spilledBufferSource, emptyBuffers, numBuffersSpilled);
+			System.out.println("numSpilled "+numBuffersSpilled);
+			System.out.println("numFull "+fullBufferSource.size());
+			it = fullBufferSource.iterator();
+		}
+		
+		@Override
+		protected MemorySegment nextSegment(MemorySegment current) throws IOException {
+			
+			// use the buffer to send the next request
+			if (requestsRemaining > 0) {
+				requestsRemaining--;
+				spilledBufferSource.readBlock(current);
+			} 
+
+			// get the next buffer either from the return queue, or the full buffer source
+			if (spilledBuffersRemaining > 0) {
+				spilledBuffersRemaining--;
+				try {
+					return spilledBufferSource.getReturnQueue().take();
+				} catch (InterruptedException e) {
+					throw new RuntimeException("Read End was interrupted while waiting for spilled buffer.", e);
+				}
+			} else if (it.hasNext()) {
+				return it.next();
+			} else {
+				
+				// reset file source
+				//spilledBufferSource.seekToPosition(0);
+				
+				throw new EOFException();
+			}
+		}
+		
+		
+//		@Override
+//		protected MemorySegment nextSegment(MemorySegment current) throws IOException {
+//			
+//			if (it.hasNext()) {
+//				return it.next();
+//			} else {
+//
+//				throw new EOFException();
+//			}
+//		}
 	}
 }
