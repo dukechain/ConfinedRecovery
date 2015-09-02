@@ -630,7 +630,7 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 				spilledBufferSource.readBlock(current);
 			} else {
 				if(current != null) {
-					emptyBufferTarget.add(current);
+					emptyBufferTarget.offer(current);
 				}
 			}
 
@@ -665,7 +665,7 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 			if (fullBufferSource.isEmpty() && spilledBuffersRemaining == 0) {
 				if (getCurrentSegment() == null || getCurrentPositionInSegment() >= getCurrentSegmentLimit()) {
 					if (getCurrentSegment() != null) {
-						emptyBufferTarget.add(getCurrentSegment());
+						emptyBufferTarget.offer(getCurrentSegment());
 						clear();
 					}
 
