@@ -31,9 +31,19 @@ public class RecoveryUtil {
 		if(newPath != null) {
 			return newPath;
 		}
+		
+		String default_tmp_path = ConfigConstants.DEFAULT_TASK_MANAGER_TMP_PATH.split(File.pathSeparator)[0];
+		
+		char lastchar = default_tmp_path.charAt(default_tmp_path.length()-1);
+		
+		if(lastchar != File.separatorChar)
+		{
+			default_tmp_path = default_tmp_path + File.separator;
+		}
+		
 		return GlobalConfiguration.getString(ConfigConstants.TASK_MANAGER_CHECKPT_DIR_KEY, 
 				GlobalConfiguration.getString(ConfigConstants.TASK_MANAGER_TMP_DIR_KEY,
-				ConfigConstants.DEFAULT_TASK_MANAGER_TMP_PATH).split(File.pathSeparator)[0]);
+						default_tmp_path));
 	}
 	
 	public static String getLoggingPath() {

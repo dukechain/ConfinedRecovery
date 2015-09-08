@@ -329,7 +329,7 @@ public class BulkIterationCheckpointingTaskmanagerKillTest {
 			}
 		});
 		
-		iteration.closeWith(result).writeAsCsv("file:/c:/temp/result");//.print();
+		iteration.closeWith(result).writeAsCsv("/tmp/result");//.print();
 		
 		env.execute();
 	}
