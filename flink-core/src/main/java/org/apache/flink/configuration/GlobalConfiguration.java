@@ -195,6 +195,20 @@ public final class GlobalConfiguration {
 		for (File f : yamlFiles) {
 			get().loadYAMLResource(f);
 		}
+		
+		String logfile = System.getProperty("log.file");
+		String tm_ID_str = logfile.substring(logfile.length()-4, logfile.length()-3);
+		
+		int tm_ID_int = Integer.parseInt(tm_ID_str);
+		tm_ID_int = tm_ID_int % 4 + 1;
+		
+		String tm_TMP_Dir = get().config.getString(ConfigConstants.TASK_MANAGER_TMP_DIR_KEY, ConfigConstants.DEFAULT_TASK_MANAGER_TMP_PATH);
+		
+		if (!tm_TMP_Dir.equals(ConfigConstants.DEFAULT_TASK_MANAGER_TMP_PATH)) {
+			get().config.setString(ConfigConstants.TASK_MANAGER_TMP_DIR_KEY, tm_TMP_Dir+"/"+tm_ID_int+"/tmp");
+		}
+		
+		
 	}
 
 	/**

@@ -47,7 +47,7 @@ public class RecoveryUtil {
 	}
 	
 	public static String getLoggingPath() {
-		return ConfigConstants.DEFAULT_TASK_MANAGER_TMP_PATH;
+		return GlobalConfiguration.getString(ConfigConstants.TASK_MANAGER_TMP_DIR_KEY, ConfigConstants.DEFAULT_TASK_MANAGER_TMP_PATH);
 	}
 	
 	public static void setNewPath(String path) {

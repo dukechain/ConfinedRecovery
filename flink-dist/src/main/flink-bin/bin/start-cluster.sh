@@ -38,11 +38,15 @@ fi
 "$FLINK_BIN_DIR"/jobmanager.sh start cluster
 
 GOON=true
+
+i=0;
+
 while $GOON
 do
     read line || GOON=false
     if [ -n "$line" ]; then
         HOST=$( extractHostName $line)
-        ssh -n $FLINK_SSH_OPTS $HOST -- "nohup /bin/bash -l $FLINK_BIN_DIR/taskmanager.sh start &"
+	i=`expr $i + 1`;
+        ssh -n $FLINK_SSH_OPTS $HOST -- "nohup /bin/bash -l $FLINK_BIN_DIR/taskmanager.sh start $i &"
     fi
 done < "$HOSTLIST"

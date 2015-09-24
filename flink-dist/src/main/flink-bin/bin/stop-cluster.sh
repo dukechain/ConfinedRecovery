@@ -36,12 +36,15 @@ fi
 
 
 GOON=true
+
+i=0;
+
 while $GOON
 do
     read line || GOON=false
     if [ -n "$line" ]; then
         HOST=$( extractHostName $line)
-        ssh -n $FLINK_SSH_OPTS $HOST -- "nohup /bin/bash $FLINK_BIN_DIR/taskmanager.sh stop &"
+        ssh -n $FLINK_SSH_OPTS $HOST -- "nohup /bin/bash $FLINK_BIN_DIR/taskmanager.sh stop $i &"
     fi
 done < $HOSTLIST
 

@@ -286,7 +286,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 				if(writer.getPartition().getOwnQueueToRequest() != -1 &&
 						writer.getPartition().getOwnQueueToRequest() != i) {
 
-					String logPath = RecoveryUtil.getLoggingPath();
+					String logPath = RecoveryUtil.getLoggingPath();		
 					logPath += "/flinklog_"+writer.getIntermediateDataSetID()+"_"+i+"_"+IterationHeadPactTask.SUPERSTEP.get();
 					
 					System.out.println("logging to "+logPath);
