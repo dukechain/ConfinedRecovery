@@ -195,6 +195,24 @@ public final class GlobalConfiguration {
 		for (File f : yamlFiles) {
 			get().loadYAMLResource(f);
 		}
+		
+		// modify taskmanager.tmp.dir for each taskmanager on one node
+		String logfile = System.getProperty("log.file");
+		System.out.println(logfile);
+		String tm_ID_str = logfile.substring(logfile.lastIndexOf("-")+1, logfile.lastIndexOf("."));
+		System.out.println("tm_ID_str="+tm_ID_str);
+		int tm_ID_int = Integer.parseInt(tm_ID_str);
+		tm_ID_int = tm_ID_int % 4 + 1;
+		
+		String tm_TMP_Dir = get().config.getString(ConfigConstants.TASK_MANAGER_TMP_DIR_KEY, ConfigConstants.DEFAULT_TASK_MANAGER_TMP_PATH);
+		
+		if (!tm_TMP_Dir.equals(ConfigConstants.DEFAULT_TASK_MANAGER_TMP_PATH)) {
+			
+			String new_tm_TMP_Dir = tm_TMP_Dir.replaceFirst("1", Integer.toString(tm_ID_int));
+			System.out.println("new_tm_TMP_Dir="+new_tm_TMP_Dir);
+			
+			get().config.setString(ConfigConstants.TASK_MANAGER_TMP_DIR_KEY, new_tm_TMP_Dir);
+		}
 	}
 
 	/**
