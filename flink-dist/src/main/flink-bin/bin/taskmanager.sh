@@ -19,6 +19,7 @@
 
 
 STARTSTOP=$1
+TaskManagerID=$2
 
 bin=`dirname "$0"`
 bin=`cd "$bin"; pwd`
@@ -46,9 +47,9 @@ constructTaskManagerClassPath() {
 
 FLINK_TM_CLASSPATH=`manglePathList "$(constructTaskManagerClassPath)"`
 
-log=$FLINK_LOG_DIR/flink-$FLINK_IDENT_STRING-taskmanager-$HOSTNAME.log
-out=$FLINK_LOG_DIR/flink-$FLINK_IDENT_STRING-taskmanager-$HOSTNAME.out
-pid=$FLINK_PID_DIR/flink-$FLINK_IDENT_STRING-taskmanager.pid
+log=$FLINK_LOG_DIR/flink-$FLINK_IDENT_STRING-taskmanager-$HOSTNAME-$TaskManagerID.log
+out=$FLINK_LOG_DIR/flink-$FLINK_IDENT_STRING-taskmanager-$HOSTNAME-$TaskManagerID.out
+pid=$FLINK_PID_DIR/flink-$FLINK_IDENT_STRING-taskmanager-$TaskManagerID.pid
 log_setting=(-Dlog.file="$log" -Dlog4j.configuration=file:"$FLINK_CONF_DIR"/log4j.properties -Dlogback.configurationFile=file:"$FLINK_CONF_DIR"/logback.xml)
 
 JAVA_VERSION=$($JAVA_RUN -version 2>&1 | sed 's/java version "\(.*\)\.\(.*\)\..*"/\1\2/; 1q')
