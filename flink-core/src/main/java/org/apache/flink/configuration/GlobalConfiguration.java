@@ -212,6 +212,11 @@ public final class GlobalConfiguration {
 			System.out.println("new_tm_TMP_Dir="+new_tm_TMP_Dir);
 			
 			get().config.setString(ConfigConstants.TASK_MANAGER_TMP_DIR_KEY, new_tm_TMP_Dir);
+			
+			File tm_Path = new File(new_tm_TMP_Dir);
+			if (!tm_Path.exists()) {
+				tm_Path.mkdirs();
+			}
 		}	
 	}
 
