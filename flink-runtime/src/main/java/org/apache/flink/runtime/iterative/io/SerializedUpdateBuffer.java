@@ -123,7 +123,7 @@ public class SerializedUpdateBuffer extends AbstractPagedOutputView {
 		readEnds = new ArrayList<ReadEnd>();
 		
 		this.doBackup = 
-				GlobalConfiguration.getBoolean(ConfigConstants.REFINED_RECOVERY, ConfigConstants.REFINED_RECOVERY_DEFAULT);
+				GlobalConfiguration.getBoolean(ConfigConstants.CONFINED_RECOVERY, ConfigConstants.CONFINED_RECOVERY_DEFAULT);
 	}
 
 	@Override

@@ -448,7 +448,7 @@ public class IterationManager {
 			InputFormatVertex checkpoint;
 			InputFormatVertex checkpointSolutionSet = null;
 			boolean refinedRecovery = 
-					GlobalConfiguration.getBoolean(ConfigConstants.REFINED_RECOVERY, ConfigConstants.REFINED_RECOVERY_DEFAULT);
+					GlobalConfiguration.getBoolean(ConfigConstants.CONFINED_RECOVERY, ConfigConstants.CONFINED_RECOVERY_DEFAULT);
 			
 			System.out.println("refined? "+refinedRecovery);
 			

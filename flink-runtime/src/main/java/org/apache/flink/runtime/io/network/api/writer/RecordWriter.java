@@ -123,7 +123,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 		
 		// log outgoing messages in case of refined recovery, but not during refined recovery
 		this.doLogging = 
-				(GlobalConfiguration.getBoolean(ConfigConstants.REFINED_RECOVERY, ConfigConstants.REFINED_RECOVERY_DEFAULT)
+				(GlobalConfiguration.getBoolean(ConfigConstants.CONFINED_RECOVERY, ConfigConstants.CONFINED_RECOVERY_DEFAULT)
 						&& this.config.getRefinedRecoveryLostNodes().size() == 0);
 		
 		if(doLogging) {

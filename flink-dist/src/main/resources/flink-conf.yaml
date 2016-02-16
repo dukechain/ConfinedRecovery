@@ -81,3 +81,9 @@ webclient.port: 8080
 # via keys 'fs.hdfs.hdfsdefault' and 'fs.hdfs.hdfssite'.
 #
 # fs.hdfs.hadoopconf: /path/to/hadoop/conf/
+
+# enbale confined recovery for fault tolerance strategy
+# confined.recovery: false
+
+# checkpoint directory of iterative dataset
+# taskmanager.checkpoint.dir: /tmp

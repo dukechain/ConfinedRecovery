@@ -28,9 +28,9 @@ public final class ConfigConstants {
 	//                            Configuration Keys
 	// ------------------------------------------------------------------------
 	
-	public static final String REFINED_RECOVERY = "refined.recovery";
+	public static final String CONFINED_RECOVERY = "confined.recovery";
 	
-	public static final boolean REFINED_RECOVERY_DEFAULT = true;
+	public static final boolean CONFINED_RECOVERY_DEFAULT = false;
 	
 	public static final String DELTA_CHECKPOINT = "delta.checkpoint";
 	
