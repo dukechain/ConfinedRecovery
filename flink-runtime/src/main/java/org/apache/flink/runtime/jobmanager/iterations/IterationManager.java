@@ -421,7 +421,11 @@ public class IterationManager {
 			// TODO Check if this really works in all cases
 			boolean bcIteration = false;
 			
-			if(iterationTaskConfig.getOutputShipStrategy(0).equals(ShipStrategyType.BROADCAST)) {
+			boolean replication_recovery_enable = GlobalConfiguration.getBoolean(
+					ConfigConstants.Replication_RECOVERY, ConfigConstants.Replication_RECOVERY_DEFAULT);
+			
+			if(iterationTaskConfig.getOutputShipStrategy(0).equals(ShipStrategyType.BROADCAST)
+					&& replication_recovery_enable) {
 				bcIteration = true;
 			}
 			

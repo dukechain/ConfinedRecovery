@@ -32,6 +32,10 @@ public final class ConfigConstants {
 	
 	public static final boolean CONFINED_RECOVERY_DEFAULT = false;
 	
+	public static final String Replication_RECOVERY = "replication.recovery";
+	
+	public static final boolean Replication_RECOVERY_DEFAULT = false;
+	
 	public static final String DELTA_CHECKPOINT = "delta.checkpoint";
 	
 	public static final int DELTA_CHECKPOINT_DEFAULT = 0;
