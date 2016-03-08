@@ -139,6 +139,8 @@ public class IterationManager {
 	
 	private Map<Integer, Instance> deadInstances = new HashMap<Integer, Instance>();
 	
+	private Map<String, Instance> deadTaskManager = new HashMap<String, Instance>();
+
 	public IterationManager(JobID jobId, int iterationId, int parallelism, int maxNumberOfIterations, 
 			AccumulatorManager accumulatorManager, ActorRef jobManagerRef, JobManager jobManager,
 			JobGraph jobGraph, LibraryCacheManager libraryCacheManager) throws IOException {
@@ -471,10 +473,20 @@ public class IterationManager {
 									ev.getCurrentExecutionAttempt().getAssignedResource().getInstance());
 						}
 						
+						Instance instance = ev.getCurrentExecutionAttempt().getAssignedResource().getInstance();
+						deadTaskManager.put(instance.getId().toString(), instance);
 					}
 				}
 				
-				System.out.println("dead Instances? "+deadInstances.size());
+				System.out.println("dead Instances? " + deadInstances.size());
+				for (Map.Entry<Integer, Instance> entry : deadInstances.entrySet()) {
+					System.out.println("Key = " + entry.getKey() + ", Value = " + entry.getValue().toString());
+				}
+				
+				System.out.println("dead TaskManager? " + deadTaskManager.size());
+				for (Map.Entry<String, Instance> entry : deadTaskManager.entrySet()) {
+					System.out.println("Key = " + entry.getKey() + ", Value = " + entry.getValue().toString());
+				}
 				
 				// have to create new checkpoint source?
 				if(!bcIteration) {
@@ -685,8 +697,8 @@ public class IterationManager {
 						// dont change all reduces
 						if(v.getParallelism() == this.parallelism && this.parallelism > 1) {
 							//v.setParallelism(v.getParallelism() - deadInstances.size());
-							v.setParallelism(this.parallelismAtStart - deadInstances.size());
-							
+							//v.setParallelism(this.parallelismAtStart - deadInstances.size());
+							v.setParallelism(this.parallelismAtStart - deadTaskManager.size());
 						}
 						
 						System.out.println("re init "+v);
@@ -703,7 +715,8 @@ public class IterationManager {
 						
 						// continue superstep where stopped
 						if(v.getInvokableClassName().toLowerCase().contains("iteration")) {
-							vConfig.setStartIteration(lastCheckpoint);
+							//vConfig.setStartIteration(lastCheckpoint);
+							vConfig.setStartIteration(this.currentIteration);
 							vConfig.setIterationRetry(retries);
 							if(refinedRecovery) {
 								vConfig.setRefinedRecoveryEnd(currentIteration - 1);
@@ -716,10 +729,12 @@ public class IterationManager {
 					System.out.println("adjusted parallelsim and initializeOnMaster");
 					
 					// adjust state of this iteration manager
-					this.parallelism = this.parallelismAtStart - deadInstances.size();
+					// this.parallelism = this.parallelismAtStart - deadInstances.size();
+					this.parallelism = this.parallelismAtStart - deadTaskManager.size();
 					this.numberOfEventsUntilEndOfSuperstep = this.numberOfTails * this.parallelism;
 					this.workers.clear();
-					this.currentIteration = this.lastCheckpoint;
+					// this.currentIteration = this.lastCheckpoint;
+					//this.currentIteration = this.lastCheckpoint + 1;
 					this.workerDoneEventCounter = 0;
 					
 					System.out.println("submit");
@@ -747,7 +762,8 @@ public class IterationManager {
 						
 						// dont change all reduces
 						if(v.getParallelism() == this.parallelism && this.parallelism > 1) {
-							v.setParallelism(v.getParallelism() - deadInstances.size());
+							//v.setParallelism(v.getParallelism() - deadInstances.size());
+							v.setParallelism(this.parallelismAtStart - deadTaskManager.size());
 						}
 						
 						// re initialize
@@ -761,16 +777,28 @@ public class IterationManager {
 						
 						// continue superstep where stopped
 						if(v.getClass().isAssignableFrom(AbstractIterativePactTask.class)) {
-							iterationTaskConfig.setStartIteration(lastCheckpoint);
+							//iterationTaskConfig.setStartIteration(lastCheckpoint);
+							iterationTaskConfig.setStartIteration(this.currentIteration);
 							iterationTaskConfig.setIterationRetry(retries);
+						}
+						
+						// set start iteration of task configure 
+						TaskConfig vConfig = new TaskConfig(v.getConfiguration());
+						if(v.getInvokableClassName().toLowerCase().contains("iteration")) {
+							vConfig.setStartIteration(this.currentIteration);
+							vConfig.setIterationRetry(retries);
 						}
 					}
 					
 					// adjust state of this iteration manager
-					this.parallelism -= deadInstances.size();
+					// this.parallelism -= deadInstances.size();
+					this.parallelism = this.parallelismAtStart - deadTaskManager.size();
+					
+					System.out.println("parallelism = " +this.parallelism + " this.parallelismAtStart = " + this.parallelismAtStart);
+					
 					this.numberOfEventsUntilEndOfSuperstep = this.numberOfTails * this.parallelism;
 					this.workers.clear();
-					this.currentIteration--;
+					//this.currentIteration--;
 					this.workerDoneEventCounter = 0;
 					
 					// adjust checkpoint vertices

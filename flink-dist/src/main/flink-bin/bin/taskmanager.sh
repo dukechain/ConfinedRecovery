@@ -102,6 +102,19 @@ case $STARTSTOP in
         fi
     ;;
 
+   (kill)
+        if [ -f $pid ]; then
+            #if kill -0 `cat $pid` > /dev/null 2>&1; then
+                echo Killing task manager on host $HOSTNAME
+                kill -9 `cat $pid`
+            #else
+                #echo No task manager to stop on host $HOSTNAME
+            #fi
+        else
+            echo No task manager to stop on host $HOSTNAME
+        fi
+    ;;
+
     (*)
         echo Please specify start or stop
     ;;
