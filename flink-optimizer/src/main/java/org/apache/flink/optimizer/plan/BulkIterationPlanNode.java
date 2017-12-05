@@ -105,6 +105,11 @@ public class BulkIterationPlanNode extends SingleInputPlanNode implements Iterat
 	public List<SinkPlanNode> getIterationSinks() {
 		return this.iterationSinks;
 	}
+	
+	public boolean isIterationSinkEmpty() {
+		return this.iterationSinks.isEmpty();
+	}
+	
 	// --------------------------------------------------------------------------------------------
 
 	

@@ -31,7 +31,6 @@ import org.apache.flink.api.common.operators.base.BulkIterationBase;
 import org.apache.flink.api.common.operators.util.FieldList;
 import org.apache.flink.optimizer.CompilerException;
 import org.apache.flink.optimizer.DataStatistics;
-import org.apache.flink.optimizer.traversals.InterestingPropertyVisitor;
 import org.apache.flink.optimizer.costs.CostEstimator;
 import org.apache.flink.optimizer.dag.WorksetIterationNode.SingleRootJoiner;
 import org.apache.flink.optimizer.dataproperties.GlobalProperties;
@@ -46,9 +45,10 @@ import org.apache.flink.optimizer.plan.BulkPartialSolutionPlanNode;
 import org.apache.flink.optimizer.plan.Channel;
 import org.apache.flink.optimizer.plan.NamedChannel;
 import org.apache.flink.optimizer.plan.PlanNode;
-import org.apache.flink.optimizer.plan.SingleInputPlanNode;
 import org.apache.flink.optimizer.plan.PlanNode.FeedbackPropertiesMeetRequirementsReport;
+import org.apache.flink.optimizer.plan.SingleInputPlanNode;
 import org.apache.flink.optimizer.plan.SinkPlanNode;
+import org.apache.flink.optimizer.traversals.InterestingPropertyVisitor;
 import org.apache.flink.runtime.operators.DriverStrategy;
 import org.apache.flink.util.Visitor;
 
@@ -212,6 +212,13 @@ public class BulkIterationNode extends SingleInputNode implements IterationNode 
 		this.iterationSinks.add(sink);
 	}
 
+	public boolean isIterationSinkEmpty() {
+		return this.iterationSinks.isEmpty();
+	}
+	
+	public List<DataSinkNode> getDataSinkNodes() {
+		return this.iterationSinks;
+	}
 	// --------------------------------------------------------------------------------------------
 	
 	@Override

@@ -36,10 +36,10 @@ import org.apache.flink.api.common.operators.CompilerHints;
 import org.apache.flink.optimizer.CompilerException;
 import org.apache.flink.optimizer.dag.BinaryUnionNode;
 import org.apache.flink.optimizer.dag.BulkIterationNode;
+import org.apache.flink.optimizer.dag.DagConnection;
 import org.apache.flink.optimizer.dag.DataSinkNode;
 import org.apache.flink.optimizer.dag.DataSourceNode;
 import org.apache.flink.optimizer.dag.OptimizerNode;
-import org.apache.flink.optimizer.dag.DagConnection;
 import org.apache.flink.optimizer.dag.TempMode;
 import org.apache.flink.optimizer.dag.WorksetIterationNode;
 import org.apache.flink.optimizer.dataproperties.GlobalProperties;
@@ -191,6 +191,30 @@ public class PlanJSONDumpGenerator {
 			writer.print("\t\t\"step_function\": [\n");
 			
 			visit(innerChild, writer, true);
+			
+			boolean isIterationSinkEmpty = node instanceof BulkIterationNode ?
+				((BulkIterationNode) node).isIterationSinkEmpty() :
+				((BulkIterationPlanNode) node).isIterationSinkEmpty();
+				
+			if (!isIterationSinkEmpty) {
+				/*DumpableNode<?> iterationSink = node instanceof BulkIterationNode ?
+					((BulkIterationNode) node).getDataSinkNodes().get(0) :
+					((BulkIterationPlanNode) node).getIterationSinks().get(0);
+			
+				visit(iterationSink, writer, false);*/
+				
+				@SuppressWarnings("rawtypes")
+				List<? extends DumpableNode> iterationSinks = (node instanceof BulkIterationNode ?
+						((BulkIterationNode) node).getDataSinkNodes() :
+						((BulkIterationPlanNode) node).getIterationSinks());
+				
+				@SuppressWarnings("rawtypes")
+				Iterator<? extends DumpableNode> iterator = iterationSinks.iterator();
+				
+				while (iterator.hasNext()) {
+					visit(iterator.next(), writer, false);		
+				}
+			}
 			
 			writer.print("\n\t\t],\n");
 			writer.print("\t\t\"partial_solution\": " + this.nodeIds.get(begin) + ",\n");
