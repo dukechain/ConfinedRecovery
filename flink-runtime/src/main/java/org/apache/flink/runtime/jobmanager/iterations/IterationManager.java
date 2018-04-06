@@ -735,6 +735,9 @@ public class IterationManager {
 					this.workers.clear();
 					// this.currentIteration = this.lastCheckpoint;
 					//this.currentIteration = this.lastCheckpoint + 1;
+					if(refinedRecovery){
+						this.currentIteration = this.lastCheckpoint + 1;
+					}
 					this.workerDoneEventCounter = 0;
 					
 					System.out.println("submit");
