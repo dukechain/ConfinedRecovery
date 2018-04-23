@@ -95,7 +95,8 @@ public class IterationSinkPactTask<IT> extends DataSinkTask<IT> {
 //			}
 			
 			// only write if writeInterval fits
-			if(superstepNum % fileFormat.getIterationWriteMode().getWriteInterval() == 0) {
+			if(superstepNum % fileFormat.getIterationWriteMode().getWriteInterval() == 0 && 
+					superstepNum > this.config.getRefinedRecoveryStart()) {
 				
 				// adjust path name with current superstep number
 				String pathName = fileFormat.getOutputFilePath().toUri().toString();

@@ -415,6 +415,9 @@ public class IterationManager {
 //			}
 			checkpointPath += "_"+lastCheckpoint+"/";
 			
+			// reset the next checkpoint
+			nextCheckpoint = lastCheckpoint;
+			
 			// save distribution pattern
 			DistributionPattern dp = iterationVertex.getInputs().get(0).getDistributionPattern();
 			ResultPartitionType rpt = iterationVertex.getInputs().get(0).getSource().getResultType();
@@ -719,6 +722,7 @@ public class IterationManager {
 							vConfig.setStartIteration(this.currentIteration);
 							vConfig.setIterationRetry(retries);
 							if(refinedRecovery) {
+								vConfig.setStartIteration(lastCheckpoint);
 								vConfig.setRefinedRecoveryEnd(currentIteration - 1);
 								vConfig.setRefinedRecoveryStart(this.lastCheckpoint);
 								vConfig.setRefinedRecoveryOldDop(this.parallelismAtStart);
@@ -736,7 +740,7 @@ public class IterationManager {
 					// this.currentIteration = this.lastCheckpoint;
 					//this.currentIteration = this.lastCheckpoint + 1;
 					if(refinedRecovery){
-						this.currentIteration = this.lastCheckpoint + 1;
+						this.currentIteration = this.lastCheckpoint;
 					}
 					this.workerDoneEventCounter = 0;
 					
